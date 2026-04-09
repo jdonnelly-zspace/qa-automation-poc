@@ -1,0 +1,200 @@
+// =============================================================================
+// Jenkinsfile.example - Post-Build Validation Stage for Franklin's Lab A3
+// =============================================================================
+//
+// PURPOSE:
+//   This is a REFERENCE FILE showing how to integrate the Python validation
+//   scripts into your existing Jenkins pipeline.  Copy the relevant stage(s)
+//   into your actual Jenkinsfile and adjust paths to match your environment.
+//
+//   This does NOT replace your existing Jenkinsfile - it demonstrates the
+//   new "Post-Build Validation" stage that should run AFTER Unity finishes
+//   building but BEFORE packaging/deployment.
+//
+// PREREQUISITES:
+//   - Python 3.6+ installed on the Jenkins agent
+//   - validate_build.py and validate_content.py accessible on the agent
+//     (either checked into the repo or copied during the pipeline)
+//
+// WHERE THIS FITS IN YOUR PIPELINE:
+//   1. Checkout
+//   2. Build (buildWin64.bat / buildWebGL.bat)   <-- existing stages
+//   3. >>> Post-Build Validation <<<              <-- NEW stage (shown below)
+//   4. Package (7-Zip / code signing)             <-- existing stages
+//   5. Deploy / Archive
+//
+// =============================================================================
+
+pipeline {
+    agent any
+
+    // -------------------------------------------------------------------------
+    // Environment variables - adjust these to match your project layout.
+    // -------------------------------------------------------------------------
+    environment {
+        // Root directory where Unity writes build output.
+        WIN64_BUILD_DIR   = "${WORKSPACE}\\Builds\\Win64"
+        WEBGL_BUILD_DIR   = "${WORKSPACE}\\Builds\\WebGL"
+
+        // Path to the validation scripts (relative to workspace root).
+        // If the scripts live in a separate repo, adjust accordingly.
+        VALIDATION_SCRIPTS = "${WORKSPACE}\\qa-automation\\01-build-verification"
+
+        // Number of .fla3 activity packs expected in a complete build.
+        EXPECTED_FLA3_COUNT = "28"
+    }
+
+    stages {
+
+        // =====================================================================
+        // Your existing build stages go here.  For example:
+        // =====================================================================
+
+        stage('Build Win64') {
+            steps {
+                echo 'Building Win64... (your existing buildWin64.bat call)'
+                // bat 'call buildWin64.bat'
+            }
+        }
+
+        // =====================================================================
+        // NEW STAGE: Post-Build Validation
+        //
+        // This runs the Python validation scripts to catch build problems
+        // before the artifacts are packaged or deployed.
+        //
+        // If validation fails, the build is marked UNSTABLE (yellow) rather
+        // than FAILURE (red).  This gives the team visibility into the problem
+        // without blocking the entire pipeline.  Change to 'error' if you
+        // want a hard failure instead.
+        // =====================================================================
+
+        stage('Post-Build Validation') {
+            steps {
+                echo '--- Running post-build validation checks ---'
+
+                // ---------------------------------------------------------
+                // Step 1: Validate the build structure (EXE, DLLs, data).
+                //
+                // This checks that Unity produced a complete build with all
+                // required files, valid code signing, and no log errors.
+                // ---------------------------------------------------------
+                script {
+                    def buildValidation = bat(
+                        script: """
+                            python "${VALIDATION_SCRIPTS}\\validate_build.py" ^
+                                --build-dir "${WIN64_BUILD_DIR}" ^
+                                --build-type win64
+                        """,
+                        returnStatus: true   // Capture exit code instead of failing immediately.
+                    )
+
+                    if (buildValidation != 0) {
+                        echo 'WARNING: Build validation found issues (see output above).'
+                        // Mark the build as UNSTABLE (yellow ball in Jenkins).
+                        // Change to error('...') if you want a hard failure.
+                        unstable('Build validation failed - review the report above.')
+                    } else {
+                        echo 'Build validation passed.'
+                    }
+                }
+
+                // ---------------------------------------------------------
+                // Step 2: Validate activity pack content (.fla3 files).
+                //
+                // This checks that all 28 expected activity packs are
+                // present and not empty/corrupt.  If you have a manifest
+                // file for hash verification, add --manifest <path>.
+                // ---------------------------------------------------------
+                script {
+                    def contentValidation = bat(
+                        script: """
+                            python "${VALIDATION_SCRIPTS}\\validate_content.py" ^
+                                --content-dir "${WIN64_BUILD_DIR}" ^
+                                --expected-count ${EXPECTED_FLA3_COUNT}
+                        """,
+                        returnStatus: true
+                    )
+
+                    if (contentValidation != 0) {
+                        echo 'WARNING: Content validation found issues (see output above).'
+                        unstable('Content validation failed - review the report above.')
+                    } else {
+                        echo 'Content validation passed.'
+                    }
+                }
+            }
+        }
+
+        // =====================================================================
+        // Optional: WebGL validation (if your pipeline also builds WebGL).
+        // =====================================================================
+
+        stage('Validate WebGL Build') {
+            // Only run this stage if a WebGL build was produced.
+            when {
+                expression { return fileExists("${WEBGL_BUILD_DIR}\\index.html") }
+            }
+            steps {
+                script {
+                    def webglValidation = bat(
+                        script: """
+                            python "${VALIDATION_SCRIPTS}\\validate_build.py" ^
+                                --build-dir "${WEBGL_BUILD_DIR}" ^
+                                --build-type webgl
+                        """,
+                        returnStatus: true
+                    )
+
+                    if (webglValidation != 0) {
+                        unstable('WebGL build validation failed.')
+                    }
+
+                    def webglContent = bat(
+                        script: """
+                            python "${VALIDATION_SCRIPTS}\\validate_content.py" ^
+                                --content-dir "${WEBGL_BUILD_DIR}" ^
+                                --expected-count ${EXPECTED_FLA3_COUNT}
+                        """,
+                        returnStatus: true
+                    )
+
+                    if (webglContent != 0) {
+                        unstable('WebGL content validation failed.')
+                    }
+                }
+            }
+        }
+
+        // =====================================================================
+        // Your existing packaging/deployment stages continue here.
+        // =====================================================================
+
+        stage('Package') {
+            steps {
+                echo 'Packaging build... (your existing 7-Zip / code signing steps)'
+            }
+        }
+    }
+
+    // =========================================================================
+    // Post-pipeline actions
+    // =========================================================================
+    post {
+        unstable {
+            // Notify the team when validation makes the build unstable.
+            echo 'Build marked UNSTABLE due to validation issues.'
+
+            // Uncomment to send email notifications:
+            // mail to: 'qa-team@zspace.com',
+            //      subject: "Build Validation Issues: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+            //      body: "Post-build validation found problems. Check the console output at ${env.BUILD_URL}"
+        }
+        failure {
+            echo 'Build FAILED.'
+        }
+        success {
+            echo 'Build and validation completed successfully.'
+        }
+    }
+}

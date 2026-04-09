@@ -1,0 +1,261 @@
+{
+  "release_version": "2.1.0",
+  "app_name": "Franklin's Lab A3",
+  "test_date": "2026-04-09",
+  "tester": "QA Team",
+  "environment": {
+    "os": "Windows 11 Pro",
+    "hardware": "zSpace Inspire",
+    "unity_version": "2022.3.20f1"
+  },
+  "results": [
+    {
+      "id": "INST-001",
+      "title": "Fresh install on supported hardware",
+      "category": "Installation & Licensing",
+      "priority": "Critical",
+      "status": "pass",
+      "notes": ""
+    },
+    {
+      "id": "INST-002",
+      "title": "Upgrade from previous version preserves settings",
+      "category": "Installation & Licensing",
+      "priority": "Critical",
+      "status": "pass",
+      "notes": ""
+    },
+    {
+      "id": "INST-003",
+      "title": "Uninstall removes all application files",
+      "category": "Installation & Licensing",
+      "priority": "High",
+      "status": "pass",
+      "notes": ""
+    },
+    {
+      "id": "INST-004",
+      "title": "License activation with valid key",
+      "category": "Installation & Licensing",
+      "priority": "Critical",
+      "status": "pass",
+      "notes": ""
+    },
+    {
+      "id": "INST-005",
+      "title": "License activation with invalid key shows error",
+      "category": "Installation & Licensing",
+      "priority": "High",
+      "status": "pass",
+      "notes": ""
+    },
+    {
+      "id": "INST-006",
+      "title": "Offline license activation workflow",
+      "category": "Installation & Licensing",
+      "priority": "Medium",
+      "status": "skip",
+      "notes": "Offline activation not supported in this build"
+    },
+    {
+      "id": "INST-007",
+      "title": "License deactivation and transfer",
+      "category": "Installation & Licensing",
+      "priority": "High",
+      "status": "pass",
+      "notes": ""
+    },
+    {
+      "id": "INST-008",
+      "title": "Install on minimum spec hardware",
+      "category": "Installation & Licensing",
+      "priority": "High",
+      "status": "fail",
+      "notes": "Installer hangs at 87% on i5-8250U with 8GB RAM"
+    },
+    {
+      "id": "INST-009",
+      "title": "Silent install via command line",
+      "category": "Installation & Licensing",
+      "priority": "Medium",
+      "status": "pass",
+      "notes": ""
+    },
+    {
+      "id": "INST-010",
+      "title": "Install path with spaces and special characters",
+      "category": "Installation & Licensing",
+      "priority": "Medium",
+      "status": "pass",
+      "notes": ""
+    },
+    {
+      "id": "STEREO-001",
+      "title": "Stereo rendering activates on supported display",
+      "category": "Stereoscopy & Head Tracking",
+      "priority": "Critical",
+      "status": "pass",
+      "notes": ""
+    },
+    {
+      "id": "STEREO-002",
+      "title": "Head tracking responds to user movement",
+      "category": "Stereoscopy & Head Tracking",
+      "priority": "Critical",
+      "status": "pass",
+      "notes": ""
+    },
+    {
+      "id": "STEREO-003",
+      "title": "Stereo comfort - no excessive ghosting",
+      "category": "Stereoscopy & Head Tracking",
+      "priority": "High",
+      "status": "pass",
+      "notes": ""
+    },
+    {
+      "id": "STEREO-004",
+      "title": "IPD adjustment functions correctly",
+      "category": "Stereoscopy & Head Tracking",
+      "priority": "High",
+      "status": "fail",
+      "notes": "IPD slider does not update stereo separation in real-time; requires app restart"
+    },
+    {
+      "id": "STEREO-005",
+      "title": "Head tracking recovery after occlusion",
+      "category": "Stereoscopy & Head Tracking",
+      "priority": "Medium",
+      "status": "pass",
+      "notes": ""
+    },
+    {
+      "id": "STEREO-006",
+      "title": "Stereo rendering at native refresh rate",
+      "category": "Stereoscopy & Head Tracking",
+      "priority": "High",
+      "status": "pass",
+      "notes": ""
+    },
+    {
+      "id": "INPUT-001",
+      "title": "Stylus primary button interaction",
+      "category": "Input Handling",
+      "priority": "Critical",
+      "status": "pass",
+      "notes": ""
+    },
+    {
+      "id": "INPUT-002",
+      "title": "Stylus secondary button interaction",
+      "category": "Input Handling",
+      "priority": "High",
+      "status": "pass",
+      "notes": ""
+    },
+    {
+      "id": "INPUT-003",
+      "title": "Stylus 6DOF tracking accuracy",
+      "category": "Input Handling",
+      "priority": "Critical",
+      "status": "pass",
+      "notes": ""
+    },
+    {
+      "id": "INPUT-004",
+      "title": "Mouse fallback when stylus disconnected",
+      "category": "Input Handling",
+      "priority": "Medium",
+      "status": "skip",
+      "notes": "Mouse fallback is a stretch goal for this release"
+    },
+    {
+      "id": "ZVIEW-001",
+      "title": "zView presenter mode launches",
+      "category": "zView",
+      "priority": "High",
+      "status": "pass",
+      "notes": ""
+    },
+    {
+      "id": "ZVIEW-002",
+      "title": "zView video stream quality",
+      "category": "zView",
+      "priority": "High",
+      "status": "pass",
+      "notes": ""
+    },
+    {
+      "id": "ZVIEW-003",
+      "title": "zView augmented reality overlay",
+      "category": "zView",
+      "priority": "Medium",
+      "status": "fail",
+      "notes": "AR overlay offset by ~2cm on secondary display"
+    },
+    {
+      "id": "ZVIEW-004",
+      "title": "zView disconnect and reconnect",
+      "category": "zView",
+      "priority": "Medium",
+      "status": "pass",
+      "notes": ""
+    },
+    {
+      "id": "HW-001",
+      "title": "Application renders on all supported GPU models",
+      "category": "Hardware & Display",
+      "priority": "Critical",
+      "status": "pass",
+      "notes": ""
+    },
+    {
+      "id": "HW-002",
+      "title": "Display resolution auto-detection",
+      "category": "Hardware & Display",
+      "priority": "High",
+      "status": "pass",
+      "notes": ""
+    },
+    {
+      "id": "HW-003",
+      "title": "Multi-monitor configuration handling",
+      "category": "Hardware & Display",
+      "priority": "Medium",
+      "status": "pass",
+      "notes": ""
+    },
+    {
+      "id": "HW-004",
+      "title": "GPU driver version compatibility",
+      "category": "Hardware & Display",
+      "priority": "High",
+      "status": "pass",
+      "notes": ""
+    },
+    {
+      "id": "HW-005",
+      "title": "Thermal throttling behavior under load",
+      "category": "Hardware & Display",
+      "priority": "Medium",
+      "status": "skip",
+      "notes": "Requires extended soak test; scheduled separately"
+    },
+    {
+      "id": "PLAT-001",
+      "title": "Windows Defender compatibility",
+      "category": "Platform Features",
+      "priority": "High",
+      "status": "pass",
+      "notes": ""
+    },
+    {
+      "id": "PLAT-002",
+      "title": "Windows Update does not break application",
+      "category": "Platform Features",
+      "priority": "Medium",
+      "status": "pass",
+      "notes": ""
+    }
+  ]
+}

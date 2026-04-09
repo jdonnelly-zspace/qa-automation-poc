@@ -1,0 +1,85 @@
+{
+  "release_version": "1.0.0",
+  "app_name": "Franklin's Lab A3",
+  "created_date": "2026-04-09",
+  "created_by": "QA Automation POC",
+  "notes": "Template structure for a test cycle definition. Each category contains test cases with step-by-step procedures and expected results.",
+  "categories": [
+    {
+      "name": "Installation & Licensing",
+      "test_cases": [
+        {
+          "id": "INST-001",
+          "testrail_id": "C10001",
+          "title": "Fresh install on supported hardware",
+          "category": "Installation & Licensing",
+          "priority": "Critical",
+          "is_common": true,
+          "steps": [
+            "Ensure the target machine meets minimum hardware requirements",
+            "Download the installer from the official distribution channel",
+            "Run the installer with default settings",
+            "Complete the installation wizard",
+            "Launch the application"
+          ],
+          "expected_results": [
+            "Hardware requirements are verified",
+            "Installer downloads without errors",
+            "Installation proceeds without errors or warnings",
+            "Wizard completes and shows success message",
+            "Application launches to the main menu within 30 seconds"
+          ],
+          "status": "pending"
+        }
+      ]
+    },
+    {
+      "name": "Stereoscopy & Head Tracking",
+      "test_cases": [
+        {
+          "id": "STEREO-001",
+          "testrail_id": "C10020",
+          "title": "Stereo rendering activates on supported display",
+          "category": "Stereoscopy & Head Tracking",
+          "priority": "Critical",
+          "is_common": true,
+          "steps": [
+            "Launch the application on a zSpace display",
+            "Verify that stereoscopic rendering is enabled by default",
+            "Observe the 3D depth effect on displayed objects"
+          ],
+          "expected_results": [
+            "Application launches successfully on zSpace display",
+            "Stereo rendering is active (left/right eye images differ)",
+            "Objects appear with correct depth separation"
+          ],
+          "status": "pending"
+        }
+      ]
+    },
+    {
+      "name": "Input Handling",
+      "test_cases": [
+        {
+          "id": "INPUT-001",
+          "testrail_id": "C10040",
+          "title": "Stylus primary button interaction",
+          "category": "Input Handling",
+          "priority": "High",
+          "is_common": true,
+          "steps": [
+            "Launch the application",
+            "Point the zSpace stylus at an interactive object",
+            "Press the primary stylus button"
+          ],
+          "expected_results": [
+            "Application is running",
+            "Object highlights or shows hover feedback",
+            "Object is selected or activated as expected"
+          ],
+          "status": "pending"
+        }
+      ]
+    }
+  ]
+}
