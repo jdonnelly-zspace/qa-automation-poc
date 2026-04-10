@@ -763,8 +763,21 @@ def main():
         default=".",
         help="Directory to write output files (default: current directory)",
     )
+    parser.add_argument(
+        "--config",
+        default=None,
+        help="Path to a JSON config file (e.g., configs/studio-a3.json). Sets the app name for the report.",
+    )
 
     args = parser.parse_args()
+
+    # Load config if provided — overrides app_name in the results data.
+    config_app_name = None
+    if args.config:
+        with open(args.config, "r", encoding="utf-8") as f:
+            config = json.load(f)
+        config_app_name = config.get("app_name")
+        print(f"  Loaded config: {args.config} (app: {config_app_name})")
 
     print("=== zSpace QA Coverage Report Generator ===")
     print()
@@ -778,7 +791,11 @@ def main():
         print("  Error: No test results found.")
         sys.exit(1)
 
-    print(f"  {len(results)} test results loaded")
+    # Override app_name from config if provided.
+    if config_app_name:
+        data["app_name"] = config_app_name
+
+    print(f"  {len(results)} test results loaded for {data.get('app_name', 'N/A')}")
     print()
 
     # Analyze.
@@ -787,11 +804,12 @@ def main():
     # Generate the requested output format.
     os.makedirs(args.output_dir, exist_ok=True)
     release = data.get("release_version", "unknown")
+    app_slug = data.get("app_name", "unknown").replace("'", "").replace(" ", "-").lower()
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
     if args.output == "markdown":
         md = generate_markdown(data, analysis)
-        output_path = os.path.join(args.output_dir, f"coverage_report_{release}_{timestamp}.md")
+        output_path = os.path.join(args.output_dir, f"coverage_report_{app_slug}_{release}_{timestamp}.md")
         with open(output_path, "w", encoding="utf-8") as f:
             f.write(md)
         print(f"Markdown report written to: {output_path}")
@@ -800,7 +818,7 @@ def main():
         print(md)
 
     elif args.output == "html":
-        output_path = os.path.join(args.output_dir, f"coverage_report_{release}_{timestamp}.html")
+        output_path = os.path.join(args.output_dir, f"coverage_report_{app_slug}_{release}_{timestamp}.html")
         generate_html(data, analysis, output_path)
         print(f"HTML report written to: {output_path}")
 
