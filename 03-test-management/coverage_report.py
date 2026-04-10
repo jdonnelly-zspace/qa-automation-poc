@@ -177,6 +177,7 @@ def analyze_results(results: list[dict]) -> dict:
     overall_executed = total - skip_count
     overall_pass_rate = round(pass_count / overall_executed * 100, 1) if overall_executed > 0 else 0.0
 
+    passed = [r for r in results if r["status"] == "pass"]
     failures = [r for r in results if r["status"] == "fail"]
     skipped = [r for r in results if r["status"] == "skip"]
 
@@ -187,6 +188,7 @@ def analyze_results(results: list[dict]) -> dict:
         "skip_count": skip_count,
         "pass_rate": overall_pass_rate,
         "categories": dict(categories),
+        "passed": passed,
         "failures": failures,
         "skipped": skipped,
     }
@@ -240,6 +242,18 @@ def generate_markdown(data: dict, analysis: dict) -> str:
             f"| {cat_data['fail']} | {cat_data['skip']} | {cat_data['pass_rate']}% |"
         )
     lines.append("")
+
+    # Passed tests — full detail so reviewers can see exactly what was validated.
+    if analysis["passed"]:
+        lines.append("## Passed Tests")
+        lines.append("")
+        lines.append(f"| ID | Title | Priority | Category |")
+        lines.append(f"|-----|-------|----------|----------|")
+        for p in analysis["passed"]:
+            lines.append(
+                f"| {p['id']} | {p['title']} | {p.get('priority', '')} | {p.get('category', '')} |"
+            )
+        lines.append("")
 
     # Failures.
     if analysis["failures"]:
@@ -356,6 +370,18 @@ def generate_html(data: dict, analysis: dict, output_path: str) -> str:
           <td>{s['title']}</td>
           <td>{s.get('category','')}</td>
           <td>{notes}</td>
+        </tr>
+        """
+
+    # Build passed rows.
+    pass_rows = ""
+    for p in analysis["passed"]:
+        pass_rows += f"""
+        <tr>
+          <td><code>{p['id']}</code></td>
+          <td>{p['title']}</td>
+          <td><span class="priority-{p.get('priority','Medium').lower()}">{p.get('priority','Medium')}</span></td>
+          <td>{p.get('category','')}</td>
         </tr>
         """
 
@@ -535,6 +561,9 @@ def generate_html(data: dict, analysis: dict, output_path: str) -> str:
 
     {"<h2>Skipped Tests</h2>" if analysis["skipped"] else ""}
     {"<table><tr><th>ID</th><th>Title</th><th>Category</th><th>Notes</th></tr>" + skip_rows + "</table>" if analysis["skipped"] else ""}
+
+    {"<h2>Passed Tests</h2>" if analysis["passed"] else ""}
+    {"<table><tr><th>ID</th><th>Title</th><th>Priority</th><th>Category</th></tr>" + pass_rows + "</table>" if analysis["passed"] else ""}
 
     <h2>Test Environment</h2>
     <div class="env-section">

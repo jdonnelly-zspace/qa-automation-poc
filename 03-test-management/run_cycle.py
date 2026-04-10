@@ -18,6 +18,7 @@ Part of Prototype #3 - QA Automation POC for zSpace Unity AR/VR applications.
 """
 
 import argparse
+import base64
 import csv
 import json
 import os
@@ -25,6 +26,8 @@ import sys
 import xml.etree.ElementTree as ET
 from datetime import datetime
 from pathlib import Path
+from urllib import request as urllib_request
+from urllib.error import HTTPError, URLError
 from xml.dom import minidom
 
 
@@ -886,6 +889,191 @@ def generate_testrail_xml(test_data: dict, release: str, app: str, output_dir: s
 
 
 # ---------------------------------------------------------------------------
+# Jira integration
+# ---------------------------------------------------------------------------
+
+def _build_jira_payloads(test_data: dict, release: str, app: str, project_key: str) -> list[dict]:
+    """
+    Build a list of Jira issue payloads (one per test case) without sending them.
+
+    Each payload follows the Jira REST API v2 create-issue format.
+    This function is used by both dry-run (preview) and live creation.
+
+    Args:
+        test_data: dict of category -> test cases.
+        release: Release version string.
+        app: Application name.
+        project_key: Jira project key (e.g., "QA").
+
+    Returns:
+        List of dicts, each representing a Jira issue payload.
+    """
+    payloads = []
+
+    # Map our priority names to Jira priority names.
+    priority_map = {
+        "Critical": "Highest",
+        "High": "High",
+        "Medium": "Medium",
+        "Low": "Low",
+    }
+
+    for category, cases in test_data.items():
+        for tc in cases:
+            steps_text = "\n".join(
+                f"{i+1}. {step}" for i, step in enumerate(tc["steps"])
+            )
+            expected_text = "\n".join(
+                f"{i+1}. {exp}" for i, exp in enumerate(tc["expected_results"])
+            )
+
+            payload = {
+                "fields": {
+                    "project": {"key": project_key},
+                    "summary": f"[{release}] {tc['title']}",
+                    "description": (
+                        f"*Test Case:* {tc['id']}\n"
+                        f"*Application:* {app}\n"
+                        f"*Release:* {release}\n"
+                        f"*Category:* {category}\n"
+                        f"*Common Test:* {'Yes' if tc.get('is_common', False) else 'No'}\n\n"
+                        f"h3. Test Steps\n{steps_text}\n\n"
+                        f"h3. Expected Results\n{expected_text}"
+                    ),
+                    "issuetype": {"name": "Task"},
+                    "priority": {"name": priority_map.get(tc.get("priority", "Medium"), "Medium")},
+                    "labels": ["qa-automation", "test-cycle", f"v{release}"],
+                },
+                # Metadata for display (not sent to Jira).
+                "_meta": {
+                    "test_id": tc["id"],
+                    "category": category,
+                    "priority": tc.get("priority", "Medium"),
+                },
+            }
+            payloads.append(payload)
+
+    return payloads
+
+
+def jira_dry_run(payloads: list[dict], output_dir: str, release: str) -> str:
+    """
+    Preview what Jira tickets would be created without calling the API.
+
+    Prints a formatted table to the console and writes a JSON file with
+    the full payloads for inspection.
+
+    Args:
+        payloads: List of Jira issue payloads from _build_jira_payloads().
+        output_dir: Directory to write the preview JSON.
+        release: Release version string.
+
+    Returns:
+        Path to the preview JSON file.
+    """
+    # Print a console preview table.
+    print()
+    print(f"  {'#':<4} {'Test ID':<12} {'Priority':<10} {'Category':<28} Summary")
+    print(f"  {'-'*4} {'-'*12} {'-'*10} {'-'*28} {'-'*40}")
+
+    for i, p in enumerate(payloads, 1):
+        meta = p["_meta"]
+        summary = p["fields"]["summary"]
+        # Truncate long summaries for the table.
+        if len(summary) > 50:
+            summary = summary[:47] + "..."
+        print(f"  {i:<4} {meta['test_id']:<12} {meta['priority']:<10} {meta['category']:<28} {summary}")
+
+    print()
+    print(f"  DRY RUN: {len(payloads)} tickets would be created in Jira.")
+    print(f"  No API calls were made.")
+
+    # Write the full payloads to a JSON file for detailed inspection.
+    preview_path = os.path.join(output_dir, f"jira_preview_{release}.json")
+    # Strip _meta from saved payloads so the JSON shows exactly what would be sent.
+    clean_payloads = []
+    for p in payloads:
+        clean = {"fields": p["fields"]}
+        clean["_preview_meta"] = p["_meta"]
+        clean_payloads.append(clean)
+
+    with open(preview_path, "w", encoding="utf-8") as f:
+        json.dump(clean_payloads, f, indent=2)
+
+    print(f"  Full payload preview saved to: {preview_path}")
+    return preview_path
+
+
+def create_jira_tickets(payloads: list[dict]) -> list[dict]:
+    """
+    Create Jira tickets via the REST API.
+
+    Requires these environment variables:
+        JIRA_BASE_URL  - e.g., "https://yoursite.atlassian.net"
+        JIRA_USER_EMAIL - e.g., "you@company.com"
+        JIRA_API_TOKEN  - API token from https://id.atlassian.com/manage-profile/security/api-tokens
+
+    Args:
+        payloads: List of Jira issue payloads from _build_jira_payloads().
+
+    Returns:
+        List of dicts with {test_id, jira_key, url} for each created ticket.
+    """
+    base_url = os.environ.get("JIRA_BASE_URL", "").rstrip("/")
+    email = os.environ.get("JIRA_USER_EMAIL", "")
+    token = os.environ.get("JIRA_API_TOKEN", "")
+
+    if not all([base_url, email, token]):
+        missing = []
+        if not base_url:
+            missing.append("JIRA_BASE_URL")
+        if not email:
+            missing.append("JIRA_USER_EMAIL")
+        if not token:
+            missing.append("JIRA_API_TOKEN")
+        print(f"\n  ERROR: Missing environment variables: {', '.join(missing)}")
+        print(f"  Set these before using --create-jira-tickets without --jira-dry-run.")
+        print(f"  Example:")
+        print(f'    set JIRA_BASE_URL=https://yoursite.atlassian.net')
+        print(f'    set JIRA_USER_EMAIL=you@company.com')
+        print(f'    set JIRA_API_TOKEN=your-api-token')
+        sys.exit(1)
+
+    # Build Basic Auth header.
+    auth_string = f"{email}:{token}"
+    auth_bytes = base64.b64encode(auth_string.encode("utf-8")).decode("utf-8")
+    headers = {
+        "Authorization": f"Basic {auth_bytes}",
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+    }
+
+    api_url = f"{base_url}/rest/api/2/issue"
+    created = []
+
+    for i, p in enumerate(payloads, 1):
+        meta = p["_meta"]
+        # Send only the "fields" portion to Jira.
+        body = json.dumps({"fields": p["fields"]}).encode("utf-8")
+
+        try:
+            req = urllib_request.Request(api_url, data=body, headers=headers, method="POST")
+            with urllib_request.urlopen(req) as resp:
+                result = json.loads(resp.read().decode("utf-8"))
+                jira_key = result.get("key", "???")
+                url = f"{base_url}/browse/{jira_key}"
+                created.append({"test_id": meta["test_id"], "jira_key": jira_key, "url": url})
+                print(f"  [{i}/{len(payloads)}] Created {jira_key} - {meta['test_id']}")
+        except HTTPError as e:
+            error_body = e.read().decode("utf-8") if e.fp else ""
+            print(f"  [{i}/{len(payloads)}] FAILED {meta['test_id']}: HTTP {e.code} - {error_body[:200]}")
+        except URLError as e:
+            print(f"  [{i}/{len(payloads)}] FAILED {meta['test_id']}: {e.reason}")
+
+    return created
+
+
+# ---------------------------------------------------------------------------
 # Main entry point
 # ---------------------------------------------------------------------------
 
@@ -915,7 +1103,28 @@ def main():
         help="Path to directory containing test-case JSON files (default: embedded sample data)",
     )
 
+    # Jira integration options.
+    parser.add_argument(
+        "--create-jira-tickets",
+        action="store_true",
+        help="Create Jira tickets for each test case (requires JIRA_BASE_URL, JIRA_USER_EMAIL, JIRA_API_TOKEN env vars)",
+    )
+    parser.add_argument(
+        "--jira-dry-run",
+        action="store_true",
+        help="Preview what Jira tickets would be created without calling the API",
+    )
+    parser.add_argument(
+        "--jira-project-key",
+        default=None,
+        help="Jira project key for ticket creation (e.g., QA). Required with --create-jira-tickets",
+    )
+
     args = parser.parse_args()
+
+    # Validate Jira arguments.
+    if (args.create_jira_tickets or args.jira_dry_run) and not args.jira_project_key:
+        parser.error("--jira-project-key is required when using --create-jira-tickets or --jira-dry-run")
 
     # Determine output directory.
     if args.output_dir:
@@ -953,6 +1162,29 @@ def main():
     print()
     print(f"Generated test cycle for {args.app_name} v{args.release_version}: "
           f"{total_cases} test cases across {total_categories} categories")
+
+    # Jira integration (opt-in).
+    if args.create_jira_tickets or args.jira_dry_run:
+        print()
+        print("--- Jira Integration ---")
+        payloads = _build_jira_payloads(
+            test_data, args.release_version, args.app_name, args.jira_project_key
+        )
+        print(f"  Prepared {len(payloads)} ticket payloads for project {args.jira_project_key}")
+
+        if args.jira_dry_run:
+            jira_dry_run(payloads, output_dir, args.release_version)
+        else:
+            print("  Creating tickets in Jira...")
+            created = create_jira_tickets(payloads)
+            print()
+            print(f"  Created {len(created)} of {len(payloads)} tickets.")
+            if created:
+                # Save a summary of created tickets.
+                summary_path = os.path.join(output_dir, f"jira_created_{args.release_version}.json")
+                with open(summary_path, "w", encoding="utf-8") as f:
+                    json.dump(created, f, indent=2)
+                print(f"  Ticket summary saved to: {summary_path}")
 
 
 if __name__ == "__main__":
