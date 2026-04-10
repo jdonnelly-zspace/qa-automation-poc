@@ -633,10 +633,11 @@ def main():
     # Generate the requested output format.
     os.makedirs(args.output_dir, exist_ok=True)
     release = data.get("release_version", "unknown")
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
     if args.output == "markdown":
         md = generate_markdown(data, analysis)
-        output_path = os.path.join(args.output_dir, f"coverage_report_{release}.md")
+        output_path = os.path.join(args.output_dir, f"coverage_report_{release}_{timestamp}.md")
         with open(output_path, "w", encoding="utf-8") as f:
             f.write(md)
         print(f"Markdown report written to: {output_path}")
@@ -645,7 +646,7 @@ def main():
         print(md)
 
     elif args.output == "html":
-        output_path = os.path.join(args.output_dir, f"coverage_report_{release}.html")
+        output_path = os.path.join(args.output_dir, f"coverage_report_{release}_{timestamp}.html")
         generate_html(data, analysis, output_path)
         print(f"HTML report written to: {output_path}")
 
