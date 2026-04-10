@@ -234,16 +234,28 @@ def build_results(production, tests, covered, uncovered, modules):
 
     # A passing threshold is configurable, but 50% is a reasonable baseline.
     cov_pass = pct >= 50.0
-    results.append(check(
-        "COV-001",
-        f"Test coverage: {pct:.1f}% ({total_covered}/{total_prod} scripts)",
-        "Test Coverage",
-        "High",
-        cov_pass,
-        f"Only {pct:.1f}% of production scripts have a corresponding test "
-        f"file. {len(uncovered)} scripts are untested. Consider adding tests "
-        f"for high-priority modules first.",
-    ))
+    cov_remediation = (
+        "This is a program of work, not a quick fix. Start with the 5 "
+        "highest-impact scripts: 1) LicenseManagerUnity - users can't launch if "
+        "licensing breaks. 2) ActivityPackManager - blank screens if content "
+        "loading breaks. 3) UndoRedoManager - data loss if undo breaks. "
+        "4) SceneManager - core scene loading. 5) ActivityImporter - activity "
+        "pipeline. POC test files for these are in 02-unity-unit-tests/EditModeTests/. "
+        "Target 75% coverage on Controllers/Managers within 2-3 sprints, then "
+        "work down remaining scripts by module priority."
+    )
+    results.append({
+        "id": "COV-001",
+        "title": f"Test coverage: {pct:.1f}% ({total_covered}/{total_prod} scripts)",
+        "category": "Test Coverage",
+        "priority": "High",
+        "status": "pass" if cov_pass else "fail",
+        "notes": (
+            f"Only {pct:.1f}% of production scripts have a corresponding test "
+            f"file. {len(uncovered)} scripts are untested."
+        ),
+        "remediation": cov_remediation,
+    })
 
     # -- COV-002: High-priority scripts covered --------------------------------
     hp_scripts = [(rel, fname) for rel, fname in production if _is_high_priority(fname)]
@@ -270,17 +282,33 @@ def build_results(production, tests, covered, uncovered, modules):
         if len(hp_uncovered) > 15:
             uncov_list += f"\n  ... and {len(hp_uncovered) - 15} more"
 
-        results.append(check(
-            "COV-002",
-            f"High-priority scripts: {hp_pct:.1f}% covered "
-            f"({len(hp_covered)}/{len(hp_scripts)})",
-            "Test Coverage",
-            "Critical",
-            hp_pass,
-            f"{len(hp_uncovered)} high-priority scripts "
-            f"(Controller/Manager/Service/Importer) lack test files:\n"
-            f"{uncov_list}",
-        ))
+        hp_remediation = (
+            "Prioritized starting list (by user impact): "
+            "1) LicenseManagerUnity - users can't launch if licensing breaks. "
+            "2) ActivityPackManager - blank screens if content loading breaks. "
+            "3) UndoRedoManager - data loss if undo breaks. "
+            "4) SceneManager - core scene loading. "
+            "5) ActivityImporter - activity pipeline. "
+            "POC test files for all 5 are ready in 02-unity-unit-tests/EditModeTests/. "
+            "Copy them into the Unity project's Assets/Tests/ folder and adapt "
+            "assembly references per the setup guide."
+        )
+        results.append({
+            "id": "COV-002",
+            "title": (
+                f"High-priority scripts: {hp_pct:.1f}% covered "
+                f"({len(hp_covered)}/{len(hp_scripts)})"
+            ),
+            "category": "Test Coverage",
+            "priority": "Critical",
+            "status": "pass" if hp_pass else "fail",
+            "notes": (
+                f"{len(hp_uncovered)} high-priority scripts "
+                f"(Controller/Manager/Service/Importer) lack test files:\n"
+                f"{uncov_list}"
+            ),
+            "remediation": hp_remediation,
+        })
 
     # -- COV-003: Modules with zero coverage -----------------------------------
     zero_modules = [
