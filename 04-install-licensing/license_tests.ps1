@@ -50,32 +50,44 @@ param(
 
     [string]$OutputPath = (Join-Path $PSScriptRoot "license_results.json"),
 
-    [string]$TestFilter = "*"
+    [string]$TestFilter = "*",
+
+    # App-specific parameters (override defaults or use --ConfigFile)
+    [string]$AppName = "",
+    [string]$ConfigFile = "",
+    [string]$AppExecutableParam = "",
+    [string]$LicenseCliToolParam = ""
 )
 
 # ============================================================================
-# CONFIGURATION -- Customize these values for your environment
+# CONFIGURATION -- Defaults (override via parameters or config file)
 # ============================================================================
+
+# Load from config file if provided
+$config = $null
+if ($ConfigFile -and (Test-Path $ConfigFile)) {
+    $config = Get-Content $ConfigFile -Raw | ConvertFrom-Json
+    Write-Host "  Loaded config: $ConfigFile (app: $($config.app_name))" -ForegroundColor Cyan
+}
 
 # --- Application paths ---
 
-# TODO: Set the path to the main zSpace App Manager executable
-$AppExecutable = "C:\Program Files\zSpace\zSpace App Manager\zSpaceAppManager.exe"
+$AppDisplayName = if ($AppName) { $AppName }
+    elseif ($config.display_name) { $config.display_name }
+    else { "zSpace App Manager" }
 
-# TODO: Set the display name as it appears in Programs and Features
-$AppDisplayName = "zSpace App Manager"
+$AppExecutable = if ($AppExecutableParam) { $AppExecutableParam }
+    elseif ($config.install_dir -and $config.main_executable) { Join-Path $config.install_dir $config.main_executable }
+    else { "C:\Program Files\zSpace\zSpace App Manager\zSpaceAppManager.exe" }
 
 # --- zCentral (cloud) activation settings ---
 
-# TODO: Set your zCentral server URL (the cloud licensing endpoint)
 $ZCentralUrl = "https://zcentral.zspace.com"
-
-# TODO: Set a test license key or activation code for zCentral
 $TestLicenseKey = "XXXX-XXXX-XXXX-XXXX"
 
-# TODO: Set the path to the zCentral CLI tool (if one exists)
-#       If activation is done through the app's own CLI, set that path here.
-$LicenseCliTool = "C:\Program Files\zSpace\zSpace App Manager\zSpaceLicense.exe"
+$LicenseCliTool = if ($LicenseCliToolParam) { $LicenseCliToolParam }
+    elseif ($config.license_cli_tool) { $config.license_cli_tool }
+    else { "C:\Program Files\zSpace\zSpace App Manager\zSpaceLicense.exe" }
 
 # TODO: Set the CLI arguments for activation via zCentral
 #       Example: --activate --key <KEY> --server <URL>

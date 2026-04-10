@@ -1119,8 +1119,21 @@ def main():
         default=None,
         help="Jira project key for ticket creation (e.g., QA). Required with --create-jira-tickets",
     )
+    parser.add_argument(
+        "--config",
+        default=None,
+        help="Path to a JSON config file (e.g., configs/studio-a3.json). Sets --app-name from the config.",
+    )
 
     args = parser.parse_args()
+
+    # Load config file if provided, apply app_name from config.
+    if args.config:
+        with open(args.config, "r", encoding="utf-8") as f:
+            config = json.load(f)
+        if args.app_name == "Franklin's Lab A3":  # only override if user didn't explicitly set it
+            args.app_name = config.get("app_name", args.app_name)
+        print(f"  Loaded config: {args.config}")
 
     # Validate Jira arguments.
     if (args.create_jira_tickets or args.jira_dry_run) and not args.jira_project_key:

@@ -52,52 +52,72 @@ param(
 
     [string]$OutputPath = (Join-Path $PSScriptRoot "install_results.json"),
 
-    [string]$TestFilter = "*"
+    [string]$TestFilter = "*",
+
+    # App-specific parameters (override defaults or use --ConfigFile)
+    [string]$AppName = "",
+    [string]$ConfigFile = "",
+    [string]$InstallerPathParam = "",
+    [string]$InstallDirParam = "",
+    [string]$MainExecutableParam = ""
 )
 
 # ============================================================================
-# CONFIGURATION -- Customize these values for your environment
+# CONFIGURATION -- Defaults for Franklin's Lab A3 (override via parameters)
 # ============================================================================
 
-# TODO: Set the full path to your zSpace App Manager installer (.exe or .msi)
-$InstallerPath = "C:\Installers\zSpaceAppManager_Setup.exe"
+# Load from config file if provided
+if ($ConfigFile -and (Test-Path $ConfigFile)) {
+    $config = Get-Content $ConfigFile -Raw | ConvertFrom-Json
+    Write-Host "  Loaded config: $ConfigFile (app: $($config.app_name))" -ForegroundColor Cyan
+}
 
-# TODO: Set the path to an OLDER version installer for upgrade testing
-$OlderInstallerPath = "C:\Installers\zSpaceAppManager_Setup_OldVersion.exe"
+# Resolve values: CLI param > config file > hardcoded default
+$InstallerPath = if ($InstallerPathParam) { $InstallerPathParam }
+    elseif ($config.installer_path) { $config.installer_path }
+    else { "C:\Installers\zSpaceAppManager_Setup.exe" }
 
-# TODO: Set the silent-install arguments for your installer
-# Common patterns:  /S   /quiet   /silent   --silent
+$OlderInstallerPath = if ($config.older_installer_path) { $config.older_installer_path }
+    else { "C:\Installers\zSpaceAppManager_Setup_OldVersion.exe" }
+
 $SilentInstallArgs = "/S"
-
-# TODO: Set the silent-uninstall arguments
 $SilentUninstallArgs = "/S"
 
-# TODO: Set the display name exactly as it appears in "Programs and Features"
-$AppDisplayName = "zSpace App Manager"
+$AppDisplayName = if ($AppName) { $AppName }
+    elseif ($config.display_name) { $config.display_name }
+    else { "zSpace App Manager" }
 
-# TODO: Set the expected installation directory
-$ExpectedInstallDir = "C:\Program Files\zSpace\zSpace App Manager"
+$ExpectedInstallDir = if ($InstallDirParam) { $InstallDirParam }
+    elseif ($config.install_dir) { $config.install_dir }
+    else { "C:\Program Files\zSpace\zSpace App Manager" }
 
-# TODO: Set the expected version string after a fresh install
-$ExpectedVersion = "1.0.0.0"
+$ExpectedVersion = if ($config.expected_version) { $config.expected_version }
+    else { "1.0.0.0" }
 
-# TODO: Set the expected version string after an upgrade
-$ExpectedUpgradeVersion = "2.0.0.0"
+$ExpectedUpgradeVersion = if ($config.expected_upgrade_version) { $config.expected_upgrade_version }
+    else { "2.0.0.0" }
 
-# TODO: Set the name of the main executable inside the install directory
-$MainExecutable = "zSpaceAppManager.exe"
+$MainExecutable = if ($MainExecutableParam) { $MainExecutableParam }
+    elseif ($config.main_executable) { $config.main_executable }
+    else { "zSpaceAppManager.exe" }
 
-# TODO: Set expected shortcut locations (add or remove as needed)
-$ExpectedShortcuts = @(
-    "$env:ProgramData\Microsoft\Windows\Start Menu\Programs\zSpace\zSpace App Manager.lnk",
-    "$env:PUBLIC\Desktop\zSpace App Manager.lnk"
-)
+$ExpectedShortcuts = if ($config.shortcut_paths) {
+        $config.shortcut_paths | ForEach-Object { [Environment]::ExpandEnvironmentVariables($_) }
+    } else {
+        @(
+            "$env:ProgramData\Microsoft\Windows\Start Menu\Programs\zSpace\$AppDisplayName.lnk",
+            "$env:PUBLIC\Desktop\$AppDisplayName.lnk"
+        )
+    }
 
-# TODO: Set registry keys to verify after install
-$ExpectedRegistryPaths = @(
-    "HKLM:\SOFTWARE\zSpace\App Manager",
-    "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\zSpace App Manager"
-)
+$ExpectedRegistryPaths = if ($config.registry_paths) {
+        @($config.registry_paths)
+    } else {
+        @(
+            "HKLM:\SOFTWARE\zSpace\$AppDisplayName",
+            "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\$AppDisplayName"
+        )
+    }
 
 # Safety flag -- set to $true ONLY on dedicated test machines
 # The script will refuse to run destructive operations if this is $false

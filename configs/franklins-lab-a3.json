@@ -1,0 +1,21 @@
+{
+  "app_name": "Franklin's Lab A3",
+  "exe_name": "FranklinsLabA3",
+  "display_name": "Franklin's Lab A3",
+  "install_dir": "C:\\Program Files\\zSpace\\Franklin's Lab A3",
+  "installer_path": "C:\\Installers\\FranklinsLabA3_Setup.exe",
+  "older_installer_path": "C:\\Installers\\FranklinsLabA3_Setup_OldVersion.exe",
+  "main_executable": "FranklinsLabA3.exe",
+  "expected_content_count": 28,
+  "expected_version": "5.5.0.0",
+  "expected_upgrade_version": "5.6.0.0",
+  "license_cli_tool": "C:\\Program Files\\zSpace\\Franklin's Lab A3\\zSpaceLicense.exe",
+  "registry_paths": [
+    "HKLM:\\SOFTWARE\\zSpace\\Franklin's Lab A3",
+    "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Franklin's Lab A3"
+  ],
+  "shortcut_paths": [
+    "%ProgramData%\\Microsoft\\Windows\\Start Menu\\Programs\\zSpace\\Franklin's Lab A3.lnk",
+    "%PUBLIC%\\Desktop\\Franklin's Lab A3.lnk"
+  ]
+}

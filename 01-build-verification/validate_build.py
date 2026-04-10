@@ -25,6 +25,7 @@ Designed for integration into Jenkins CI/CD pipelines.
 
 import argparse
 import glob
+import json
 import os
 import subprocess
 import sys
@@ -34,7 +35,7 @@ import sys
 # Configuration - adjust these values if the project structure changes
 # ---------------------------------------------------------------------------
 
-# The name of the main executable (without extension) as built by Unity.
+# Default app name (overridden by --app-name or --config CLI args).
 APP_NAME = "FranklinsLabA3"
 
 # Minimum acceptable file sizes (in bytes).  A valid Unity build will always
@@ -386,12 +387,13 @@ def check_unity_log(build_dir, result):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Validate a completed Unity build for Franklin's Lab A3.",
+        description="Validate a completed Unity build for any zSpace application.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             "Examples:\n"
             '  python validate_build.py --build-dir "C:/Builds/Win64" --build-type win64\n'
-            '  python validate_build.py --build-dir "C:/Builds/WebGL" --build-type webgl\n'
+            '  python validate_build.py --build-dir "C:/Builds/Win64" --build-type win64 --app-name StudioA3\n'
+            '  python validate_build.py --build-dir "C:/Builds/Win64" --build-type win64 --config ../configs/studio-a3.json\n'
         ),
     )
     parser.add_argument(
@@ -405,8 +407,30 @@ def main():
         choices=["win64", "webgl"],
         help="Type of build to validate: 'win64' or 'webgl'.",
     )
+    parser.add_argument(
+        "--app-name",
+        default=None,
+        help="Application EXE name without extension (e.g., StudioA3, FranklinsLabA3). "
+             "Determines EXE filename and _Data folder name. Default: FranklinsLabA3",
+    )
+    parser.add_argument(
+        "--config",
+        default=None,
+        help="Path to a JSON config file (e.g., configs/studio-a3.json). "
+             "Overrides --app-name and other defaults with app-specific values.",
+    )
 
     args = parser.parse_args()
+
+    # Load config file if provided, then apply CLI overrides.
+    global APP_NAME
+    if args.config:
+        with open(args.config, "r", encoding="utf-8") as f:
+            config = json.load(f)
+        APP_NAME = config.get("exe_name", APP_NAME)
+        print(f"  Loaded config: {args.config} (app: {config.get('app_name', APP_NAME)})")
+    if args.app_name:
+        APP_NAME = args.app_name
 
     # Normalize the path (handle forward/back slashes, etc.).
     build_dir = os.path.abspath(args.build_dir)

@@ -1,0 +1,21 @@
+{
+  "app_name": "Studio A3",
+  "exe_name": "StudioA3",
+  "display_name": "zSpace Studio A3",
+  "install_dir": "C:\\Program Files\\zSpace\\Studio A3",
+  "installer_path": "C:\\Installers\\StudioA3_Setup.exe",
+  "older_installer_path": "C:\\Installers\\StudioA3_Setup_OldVersion.exe",
+  "main_executable": "StudioA3.exe",
+  "expected_content_count": 0,
+  "expected_version": "1.0.0.0",
+  "expected_upgrade_version": "2.0.0.0",
+  "license_cli_tool": "C:\\Program Files\\zSpace\\Studio A3\\zSpaceLicense.exe",
+  "registry_paths": [
+    "HKLM:\\SOFTWARE\\zSpace\\Studio A3",
+    "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\zSpace Studio A3"
+  ],
+  "shortcut_paths": [
+    "%ProgramData%\\Microsoft\\Windows\\Start Menu\\Programs\\zSpace\\Studio A3.lnk",
+    "%PUBLIC%\\Desktop\\Studio A3.lnk"
+  ]
+}
