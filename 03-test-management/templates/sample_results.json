@@ -71,7 +71,8 @@
       "category": "Installation & Licensing",
       "priority": "High",
       "status": "fail",
-      "notes": "Installer hangs at 87% on i5-8250U with 8GB RAM"
+      "notes": "Installer hangs at 87% on i5-8250U with 8GB RAM",
+      "remediation": "Known issue: The installer's asset extraction step exceeds available memory on 8GB systems. Recommended fix: Add a pre-install memory check that warns the user, or optimize the extraction to stream assets instead of loading them all into memory. Workaround: Close all other applications before installing."
     },
     {
       "id": "INST-009",
@@ -119,7 +120,8 @@
       "category": "Stereoscopy & Head Tracking",
       "priority": "High",
       "status": "fail",
-      "notes": "IPD slider does not update stereo separation in real-time; requires app restart"
+      "notes": "IPD slider does not update stereo separation in real-time; requires app restart",
+      "remediation": "Root cause likely in the stereo camera rig not subscribing to IPD change events. Check the zSpace Core SDK callback registration for IPD updates. The camera separation value is probably only read at startup. Fix: Add a listener that updates camera separation when the IPD slider fires its OnValueChanged event."
     },
     {
       "id": "STEREO-005",
@@ -191,7 +193,8 @@
       "category": "zView",
       "priority": "Medium",
       "status": "fail",
-      "notes": "AR overlay offset by ~2cm on secondary display"
+      "notes": "AR overlay offset by ~2cm on secondary display",
+      "remediation": "Calibration issue between the zView camera feed and the Unity render pipeline. RCA steps: 1) Check if the offset is consistent across display models or specific to one. 2) Verify the zView SDK camera-to-world transform matrix. 3) Compare the AR overlay position with zView's built-in calibration tool. 4) If display-specific, likely a resolution/DPI scaling mismatch in the projection matrix."
     },
     {
       "id": "ZVIEW-004",

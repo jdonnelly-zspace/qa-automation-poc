@@ -56,13 +56,17 @@ SAMPLE_RESULTS = {
         {"id": "INST-005", "title": "License activation with invalid key shows error", "category": "Installation & Licensing", "priority": "High", "status": "pass"},
         {"id": "INST-006", "title": "Offline license activation workflow", "category": "Installation & Licensing", "priority": "Medium", "status": "skip", "notes": "Offline activation not supported in this build"},
         {"id": "INST-007", "title": "License deactivation and transfer", "category": "Installation & Licensing", "priority": "High", "status": "pass"},
-        {"id": "INST-008", "title": "Install on minimum spec hardware", "category": "Installation & Licensing", "priority": "High", "status": "fail", "notes": "Installer hangs at 87% on i5-8250U with 8GB RAM"},
+        {"id": "INST-008", "title": "Install on minimum spec hardware", "category": "Installation & Licensing", "priority": "High", "status": "fail",
+         "notes": "Installer hangs at 87% on i5-8250U with 8GB RAM",
+         "remediation": "Known issue: The installer's asset extraction step exceeds available memory on 8GB systems. Recommended fix: Add a pre-install memory check that warns the user, or optimize the extraction to stream assets instead of loading them all into memory. Workaround: Close all other applications before installing."},
         {"id": "INST-009", "title": "Silent install via command line", "category": "Installation & Licensing", "priority": "Medium", "status": "pass"},
         {"id": "INST-010", "title": "Install path with spaces and special characters", "category": "Installation & Licensing", "priority": "Medium", "status": "pass"},
         {"id": "STEREO-001", "title": "Stereo rendering activates on supported display", "category": "Stereoscopy & Head Tracking", "priority": "Critical", "status": "pass"},
         {"id": "STEREO-002", "title": "Head tracking responds to user movement", "category": "Stereoscopy & Head Tracking", "priority": "Critical", "status": "pass"},
         {"id": "STEREO-003", "title": "Stereo comfort - no excessive ghosting", "category": "Stereoscopy & Head Tracking", "priority": "High", "status": "pass"},
-        {"id": "STEREO-004", "title": "IPD adjustment functions correctly", "category": "Stereoscopy & Head Tracking", "priority": "High", "status": "fail", "notes": "IPD slider does not update stereo separation in real-time; requires app restart"},
+        {"id": "STEREO-004", "title": "IPD adjustment functions correctly", "category": "Stereoscopy & Head Tracking", "priority": "High", "status": "fail",
+         "notes": "IPD slider does not update stereo separation in real-time; requires app restart",
+         "remediation": "Root cause likely in the stereo camera rig not subscribing to IPD change events. Check the zSpace Core SDK callback registration for IPD updates. The camera separation value is probably only read at startup. Fix: Add a listener that updates camera separation when the IPD slider fires its OnValueChanged event."},
         {"id": "STEREO-005", "title": "Head tracking recovery after occlusion", "category": "Stereoscopy & Head Tracking", "priority": "Medium", "status": "pass"},
         {"id": "STEREO-006", "title": "Stereo rendering at native refresh rate", "category": "Stereoscopy & Head Tracking", "priority": "High", "status": "pass"},
         {"id": "INPUT-001", "title": "Stylus primary button interaction", "category": "Input Handling", "priority": "Critical", "status": "pass"},
@@ -71,7 +75,9 @@ SAMPLE_RESULTS = {
         {"id": "INPUT-004", "title": "Mouse fallback when stylus disconnected", "category": "Input Handling", "priority": "Medium", "status": "skip", "notes": "Mouse fallback is a stretch goal for this release"},
         {"id": "ZVIEW-001", "title": "zView presenter mode launches", "category": "zView", "priority": "High", "status": "pass"},
         {"id": "ZVIEW-002", "title": "zView video stream quality", "category": "zView", "priority": "High", "status": "pass"},
-        {"id": "ZVIEW-003", "title": "zView augmented reality overlay", "category": "zView", "priority": "Medium", "status": "fail", "notes": "AR overlay offset by ~2cm on secondary display"},
+        {"id": "ZVIEW-003", "title": "zView augmented reality overlay", "category": "zView", "priority": "Medium", "status": "fail",
+         "notes": "AR overlay offset by ~2cm on secondary display",
+         "remediation": "Calibration issue between the zView camera feed and the Unity render pipeline. RCA steps: 1) Check if the offset is consistent across display models or specific to one. 2) Verify the zView SDK camera-to-world transform matrix. 3) Compare the AR overlay position with zView's built-in calibration tool. 4) If display-specific, likely a resolution/DPI scaling mismatch in the projection matrix."},
         {"id": "ZVIEW-004", "title": "zView disconnect and reconnect", "category": "zView", "priority": "Medium", "status": "pass"},
         {"id": "HW-001", "title": "Application renders on all supported GPU models", "category": "Hardware & Display", "priority": "Critical", "status": "pass"},
         {"id": "HW-002", "title": "Display resolution auto-detection", "category": "Hardware & Display", "priority": "High", "status": "pass"},
@@ -82,6 +88,87 @@ SAMPLE_RESULTS = {
         {"id": "PLAT-002", "title": "Windows Update does not break application", "category": "Platform Features", "priority": "Medium", "status": "pass"},
     ],
 }
+
+
+# ---------------------------------------------------------------------------
+# Category-based RCA playbooks (used when no specific remediation is provided)
+# ---------------------------------------------------------------------------
+# When a test fails but no "remediation" field is in the results data, the
+# report generates generic root cause analysis guidance based on the category.
+# ---------------------------------------------------------------------------
+
+RCA_PLAYBOOKS = {
+    "Installation & Licensing": (
+        "RCA Playbook: 1) Capture installer logs (check %TEMP% for MSI/NSIS logs). "
+        "2) Reproduce on a clean VM to rule out environment-specific issues. "
+        "3) Check Windows Event Viewer > Application for installer errors. "
+        "4) Compare working vs failing machine specs (RAM, disk space, OS version, antivirus). "
+        "5) If licensing-related, verify license server connectivity and check zCentral dashboard for activation records."
+    ),
+    "Stereoscopy & Head Tracking": (
+        "RCA Playbook: 1) Check zSpace Diagnostics tool for hardware/driver status. "
+        "2) Verify zSpace SDK version matches the app's expected version. "
+        "3) Capture Unity Player.log for rendering errors or warnings. "
+        "4) Test on a second zSpace display to isolate hardware vs software issues. "
+        "5) Compare stereo camera settings in Unity Inspector against SDK documentation."
+    ),
+    "Input Handling": (
+        "RCA Playbook: 1) Verify stylus firmware is up to date via zSpace System Software. "
+        "2) Check Unity Input Manager settings for button mappings. "
+        "3) Test with zSpace Diagnostics to confirm raw tracking data is correct. "
+        "4) Review the input event handling code for race conditions or dropped events. "
+        "5) If mouse fallback issue, check whether the app's input abstraction layer has a fallback path."
+    ),
+    "zView": (
+        "RCA Playbook: 1) Verify zView version compatibility with the app and SDK. "
+        "2) Check secondary display resolution and refresh rate settings. "
+        "3) Test zView in isolation (without the app) to confirm it functions normally. "
+        "4) Capture zView logs from %APPDATA%/zSpace/zView/. "
+        "5) If overlay/alignment issue, run the zView calibration wizard and re-test."
+    ),
+    "Hardware & Display": (
+        "RCA Playbook: 1) Document exact hardware model, GPU driver version, and OS build. "
+        "2) Check GPU vendor's known issues list for the installed driver. "
+        "3) Test with both the minimum and latest recommended driver versions. "
+        "4) Monitor GPU/CPU temps during reproduction with HWMonitor or similar. "
+        "5) If display-specific, test on another display model to isolate."
+    ),
+    "Platform Features": (
+        "RCA Playbook: 1) Check Windows version and recent update history (winver, Get-HotFix). "
+        "2) Review Windows Defender/SmartScreen logs for false positives. "
+        "3) Verify code signing certificate chain is valid and not expired. "
+        "4) Test with a clean Windows install (no third-party antivirus). "
+        "5) Check Windows compatibility settings on the app executable."
+    ),
+}
+
+DEFAULT_RCA_PLAYBOOK = (
+    "RCA Playbook: 1) Reproduce the failure and capture logs/screenshots. "
+    "2) Check if this is a regression (did it pass in the previous release?). "
+    "3) Isolate the variable: hardware, software version, environment config. "
+    "4) Review recent code changes in the related area (git log). "
+    "5) File a bug with reproduction steps, logs, and environment details."
+)
+
+
+# ---------------------------------------------------------------------------
+# Remediation helper
+# ---------------------------------------------------------------------------
+
+def get_remediation(test_result: dict) -> str:
+    """
+    Return remediation guidance for a failed test.
+
+    Priority order:
+      1. If the result has a "remediation" field, use it (known fix).
+      2. Otherwise, return the category-specific RCA playbook.
+      3. If the category isn't recognized, return the generic playbook.
+    """
+    if test_result.get("remediation"):
+        return test_result["remediation"]
+
+    category = test_result.get("category", "")
+    return RCA_PLAYBOOKS.get(category, DEFAULT_RCA_PLAYBOOK)
 
 
 # ---------------------------------------------------------------------------
@@ -255,14 +342,20 @@ def generate_markdown(data: dict, analysis: dict) -> str:
             )
         lines.append("")
 
-    # Failures.
+    # Failures with remediation guidance.
     if analysis["failures"]:
         lines.append("## Failing Tests")
         lines.append("")
         for f in analysis["failures"]:
-            notes = f" - {f.get('notes', '')}" if f.get("notes") else ""
-            lines.append(f"- **{f['id']}** [{f.get('priority', '')}] {f['title']}{notes}")
-        lines.append("")
+            notes = f.get("notes", "")
+            remediation = get_remediation(f)
+            lines.append(f"### {f['id']} - {f['title']} [{f.get('priority', '')}]")
+            lines.append("")
+            if notes:
+                lines.append(f"**Observation:** {notes}")
+                lines.append("")
+            lines.append(f"**Assessment & Next Steps:** {remediation}")
+            lines.append("")
 
     # Skipped.
     if analysis["skipped"]:
@@ -346,18 +439,29 @@ def generate_html(data: dict, analysis: dict, output_path: str) -> str:
         cd = analysis["categories"][cat_name]
         category_bars += _progress_bar_html(cat_name, cd["pass"], cd["fail"], cd["skip"], cd["total"])
 
-    # Build failure rows.
-    failure_rows = ""
+    # Build failure cards (each failure gets its own card with remediation).
+    failure_cards = ""
     for f in analysis["failures"]:
         notes = f.get("notes", "")
-        failure_rows += f"""
-        <tr>
-          <td><code>{f['id']}</code></td>
-          <td>{f['title']}</td>
-          <td><span class="priority-{f.get('priority','Medium').lower()}">{f.get('priority','Medium')}</span></td>
-          <td>{f.get('category','')}</td>
-          <td>{notes}</td>
-        </tr>
+        remediation = get_remediation(f)
+        has_known_fix = bool(f.get("remediation"))
+        fix_label = "Known Fix" if has_known_fix else "RCA Playbook"
+        fix_icon = "&#9989;" if has_known_fix else "&#128270;"  # checkmark vs magnifying glass
+
+        failure_cards += f"""
+        <div class="failure-card">
+          <div class="failure-header">
+            <code>{f['id']}</code>
+            <span class="priority-{f.get('priority','Medium').lower()}">{f.get('priority','Medium')}</span>
+            <span class="failure-category">{f.get('category','')}</span>
+          </div>
+          <div class="failure-title">{f['title']}</div>
+          {"<div class='failure-notes'><strong>Observation:</strong> " + notes + "</div>" if notes else ""}
+          <div class="failure-remediation">
+            <div class="remediation-label">{fix_icon} {fix_label}</div>
+            <div class="remediation-text">{remediation}</div>
+          </div>
+        </div>
         """
 
     # Build skipped rows.
@@ -487,6 +591,56 @@ def generate_html(data: dict, analysis: dict, output_path: str) -> str:
     .swatch-fail {{ background: #e53935; }}
     .swatch-skip {{ background: #ffc107; }}
 
+    /* Failure cards */
+    .failure-card {{
+      background: #fff;
+      border-left: 4px solid #e53935;
+      border-radius: 8px;
+      padding: 16px 20px;
+      margin-bottom: 16px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }}
+    .failure-header {{
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 6px;
+    }}
+    .failure-category {{
+      color: #666;
+      font-size: 0.85em;
+      margin-left: auto;
+    }}
+    .failure-title {{
+      font-size: 1.05em;
+      font-weight: 600;
+      margin-bottom: 8px;
+    }}
+    .failure-notes {{
+      background: #fff3f3;
+      border-radius: 4px;
+      padding: 8px 12px;
+      margin-bottom: 10px;
+      font-size: 0.9em;
+      color: #b71c1c;
+    }}
+    .failure-remediation {{
+      background: #f5f5f5;
+      border-radius: 4px;
+      padding: 10px 14px;
+    }}
+    .remediation-label {{
+      font-weight: 600;
+      font-size: 0.9em;
+      margin-bottom: 4px;
+      color: #333;
+    }}
+    .remediation-text {{
+      font-size: 0.88em;
+      color: #444;
+      line-height: 1.5;
+    }}
+
     /* Tables */
     table {{
       width: 100%;
@@ -556,8 +710,8 @@ def generate_html(data: dict, analysis: dict, output_path: str) -> str:
     </div>
     {category_bars}
 
-    {"<h2>Failing Tests</h2>" if analysis["failures"] else ""}
-    {"<table><tr><th>ID</th><th>Title</th><th>Priority</th><th>Category</th><th>Notes</th></tr>" + failure_rows + "</table>" if analysis["failures"] else ""}
+    {"<h2>Failing Tests - Assessment &amp; Remediation</h2>" if analysis["failures"] else ""}
+    {failure_cards if analysis["failures"] else ""}
 
     {"<h2>Skipped Tests</h2>" if analysis["skipped"] else ""}
     {"<table><tr><th>ID</th><th>Title</th><th>Category</th><th>Notes</th></tr>" + skip_rows + "</table>" if analysis["skipped"] else ""}
