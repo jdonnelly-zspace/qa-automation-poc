@@ -760,8 +760,8 @@ def main():
     )
     parser.add_argument(
         "--output-dir",
-        default=".",
-        help="Directory to write output files (default: current directory)",
+        default=None,
+        help="Directory to write output files (default: output/reports/ in the project root)",
     )
     parser.add_argument(
         "--config",
@@ -770,6 +770,11 @@ def main():
     )
 
     args = parser.parse_args()
+
+    # Default output dir to output/reports/ relative to the project root.
+    if args.output_dir is None:
+        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        args.output_dir = os.path.join(project_root, "output", "reports")
 
     # Load config if provided — overrides app_name in the results data.
     config_app_name = None
