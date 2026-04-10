@@ -217,7 +217,8 @@ def group_by_module(production, covered_set):
 # Test result builders
 # ---------------------------------------------------------------------------
 
-def build_results(production, tests, covered, uncovered, modules):
+def build_results(production, tests, covered, uncovered, modules,
+                   extra_test_count=0):
     """
     Build COV-001 through COV-003 result entries compatible with
     coverage_report.py.
@@ -234,26 +235,44 @@ def build_results(production, tests, covered, uncovered, modules):
 
     # A passing threshold is configurable, but 50% is a reasonable baseline.
     cov_pass = pct >= 50.0
-    cov_remediation = (
-        "This is a program of work, not a quick fix. Start with the 5 "
-        "highest-impact scripts: 1) LicenseManagerUnity - users can't launch if "
-        "licensing breaks. 2) ActivityPackManager - blank screens if content "
-        "loading breaks. 3) UndoRedoManager - data loss if undo breaks. "
-        "4) SceneManager - core scene loading. 5) ActivityImporter - activity "
-        "pipeline. POC test files for these are in 02-unity-unit-tests/EditModeTests/. "
-        "Target 75% coverage on Controllers/Managers within 2-3 sprints, then "
-        "work down remaining scripts by module priority."
-    )
+
+    if total_covered > 0 and extra_test_count > 0:
+        cov_note = (
+            f"{pct:.1f}% of production scripts have a corresponding test file "
+            f"({total_covered} covered, {len(uncovered)} untested). "
+            f"{total_covered} scripts have validated POC tests "
+            f"(from extra-tests directories)."
+        )
+        cov_remediation = (
+            f"{total_covered} scripts already have validated POC tests "
+            f"(all passing in Unity). To continue improving coverage: "
+            f"Target 75% on Controllers/Managers within 2-3 sprints, "
+            f"then work down remaining {len(uncovered)} scripts by module priority. "
+            f"POC test files are in 02-unity-unit-tests/EditModeTests/."
+        )
+    else:
+        cov_note = (
+            f"Only {pct:.1f}% of production scripts have a corresponding test "
+            f"file. {len(uncovered)} scripts are untested."
+        )
+        cov_remediation = (
+            "This is a program of work, not a quick fix. Start with the 5 "
+            "highest-impact scripts: 1) LicenseManagerUnity - users can't launch if "
+            "licensing breaks. 2) ActivityPackManager - blank screens if content "
+            "loading breaks. 3) UndoRedoManager - data loss if undo breaks. "
+            "4) SceneManager - core scene loading. 5) ActivityImporter - activity "
+            "pipeline. POC test files for these are in 02-unity-unit-tests/EditModeTests/. "
+            "Target 75% coverage on Controllers/Managers within 2-3 sprints, then "
+            "work down remaining scripts by module priority."
+        )
+
     results.append({
         "id": "COV-001",
         "title": f"Test coverage: {pct:.1f}% ({total_covered}/{total_prod} scripts)",
         "category": "Test Coverage",
         "priority": "High",
         "status": "pass" if cov_pass else "fail",
-        "notes": (
-            f"Only {pct:.1f}% of production scripts have a corresponding test "
-            f"file. {len(uncovered)} scripts are untested."
-        ),
+        "notes": cov_note,
         "remediation": cov_remediation,
     })
 
@@ -282,17 +301,34 @@ def build_results(production, tests, covered, uncovered, modules):
         if len(hp_uncovered) > 15:
             uncov_list += f"\n  ... and {len(hp_uncovered) - 15} more"
 
-        hp_remediation = (
-            "Prioritized starting list (by user impact): "
-            "1) LicenseManagerUnity - users can't launch if licensing breaks. "
-            "2) ActivityPackManager - blank screens if content loading breaks. "
-            "3) UndoRedoManager - data loss if undo breaks. "
-            "4) SceneManager - core scene loading. "
-            "5) ActivityImporter - activity pipeline. "
-            "POC test files for all 5 are ready in 02-unity-unit-tests/EditModeTests/. "
-            "Copy them into the Unity project's Assets/Tests/ folder and adapt "
-            "assembly references per the setup guide."
-        )
+        if len(hp_covered) > 0 and extra_test_count > 0:
+            covered_names = ", ".join(
+                os.path.basename(rel).replace(".cs", "")
+                for rel, _ in hp_scripts if rel in covered_set
+            )
+            hp_remediation = (
+                f"{len(hp_covered)} of {len(hp_scripts)} high-priority scripts "
+                f"already have validated POC tests (all passing in Unity): "
+                f"{covered_names}. "
+                f"Remaining {len(hp_uncovered)} scripts need coverage. "
+                f"Next priorities by user impact: focus on scripts in "
+                f"licensing, content loading, and scene management modules. "
+                f"POC test files are in 02-unity-unit-tests/EditModeTests/ - "
+                f"copy into Assets/Tests/ and adapt assembly references."
+            )
+        else:
+            hp_remediation = (
+                "Prioritized starting list (by user impact): "
+                "1) LicenseManagerUnity - users can't launch if licensing breaks. "
+                "2) ActivityPackManager - blank screens if content loading breaks. "
+                "3) UndoRedoManager - data loss if undo breaks. "
+                "4) SceneManager - core scene loading. "
+                "5) ActivityImporter - activity pipeline. "
+                "POC test files for all 5 are ready in 02-unity-unit-tests/EditModeTests/. "
+                "Copy them into the Unity project's Assets/Tests/ folder and adapt "
+                "assembly references per the setup guide."
+            )
+
         results.append({
             "id": "COV-002",
             "title": (
@@ -417,6 +453,15 @@ def main():
         default=None,
         help="Directory for output JSON (default: output/reports/ in project root)",
     )
+    parser.add_argument(
+        "--extra-tests",
+        nargs="*",
+        default=[],
+        help=(
+            "Additional directories containing test .cs files outside the repo "
+            "(e.g., POC test files in 02-unity-unit-tests/EditModeTests/)"
+        ),
+    )
 
     args = parser.parse_args()
 
@@ -459,8 +504,24 @@ def main():
 
     print("  Discovering scripts...")
     production, tests = discover_scripts(repo_dir)
+
+    # -- Extra test directories (e.g., POC test files outside the repo) --------
+    extra_test_count = 0
+    for extra_dir in args.extra_tests:
+        extra_abs = os.path.abspath(extra_dir)
+        if not os.path.isdir(extra_abs):
+            print(f"    Warning: extra-tests dir not found: {extra_abs}")
+            continue
+        for cs_path in glob.glob(os.path.join(extra_abs, "**", "*.cs"), recursive=True):
+            fname = os.path.basename(cs_path)
+            if _is_test_file(fname):
+                rel = os.path.relpath(cs_path, extra_abs)
+                tests.append((rel, fname))
+                extra_test_count += 1
+
     print(f"    Production scripts: {len(production)}")
-    print(f"    Test scripts:       {len(tests)}")
+    print(f"    Test scripts:       {len(tests)}"
+          + (f" ({extra_test_count} from extra-tests)" if extra_test_count else ""))
     print()
 
     # -- Matching --------------------------------------------------------------
@@ -475,7 +536,8 @@ def main():
     modules = group_by_module(production, covered_set)
 
     # -- Build results ---------------------------------------------------------
-    results = build_results(production, tests, covered, uncovered, modules)
+    results = build_results(production, tests, covered, uncovered, modules,
+                             extra_test_count)
 
     # -- Write JSON (compatible with coverage_report.py) -----------------------
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")

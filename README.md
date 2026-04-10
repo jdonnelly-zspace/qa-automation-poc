@@ -21,7 +21,30 @@ This POC proves that automation is practical and high-value, without requiring z
 | 3 | [Test Management](03-test-management/) | One-command test cycle generation for Jira + TestRail + coverage dashboard | ~1-2 weeks |
 | 4 | [Install/Licensing](04-install-licensing/) | PowerShell scripts automating 15-20 of the 34 install/license test cases | ~2-3 weeks |
 
-## Quick Start
+## Quick Start — One Command
+
+Run the full QA automation pipeline for any zSpace Unity repo:
+
+```bash
+# Single repo (GitHub URL or local path)
+python run_qa.py https://github.com/zspace/apps.studioa3
+
+# Multiple repos at once
+python run_qa.py https://github.com/zspace/apps.studioa3 https://github.com/zspace/apps.franklinslab-a3
+
+# Local path
+python run_qa.py ../apps.studioa3
+```
+
+See [PROMPTS.md](PROMPTS.md) for ready-to-paste Claude Code prompts.
+
+This automatically:
+1. Clones the repo (if URL) or uses the local path
+2. Runs all 4 scan types (source code, localization, assets, test coverage)
+3. Includes POC unit test results if available
+4. Merges everything and generates an HTML dashboard in `output/reports/`
+
+### Individual Prototypes
 
 ### Prototype #1 — Build Verification
 ```bash

@@ -8,3 +8,8 @@ output/reports/*.md
 output/**/*.csv
 output/**/*.xml
 output/**/*.json
+output/**/*.txt
+output/*/
+
+# Cloned repos (created by run_qa.py)
+repos/
