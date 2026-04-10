@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 """
 scan_assets.py - Validate Unity assets without running Unity.
 
@@ -21,42 +22,13 @@ Usage:
 Part of Prototype #3 - QA Automation POC for zSpace Unity AR/VR applications.
 """
 
-import argparse
 import glob
 import json
 import os
 import re
 import sys
-from datetime import datetime
 
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-def check(test_id, title, category, priority, passed, notes=""):
-    """Create a test result entry (pass or fail)."""
-    return {
-        "id": test_id,
-        "title": title,
-        "category": category,
-        "priority": priority,
-        "status": "pass" if passed else "fail",
-        "notes": notes if not passed else "",
-        "remediation": "" if passed else notes,
-    }
-
-
-def skip(test_id, title, category, priority, reason):
-    """Create a skipped test result entry."""
-    return {
-        "id": test_id,
-        "title": title,
-        "category": category,
-        "priority": priority,
-        "status": "skip",
-        "notes": reason,
-    }
+from qa_common import check, skip, build_scanner_argparser, load_config, resolve_output_dir, save_results, print_summary
 
 
 # ---------------------------------------------------------------------------
@@ -413,149 +385,46 @@ def check_scenes(repo_dir, config):
 # ---------------------------------------------------------------------------
 
 def main():
-    parser = argparse.ArgumentParser(
-        description=(
-            "Validate Unity assets without running Unity. Checks addressable "
-            "groups, prefab integrity, material shaders, .meta files, and scenes."
-        ),
-        epilog=(
-            "Examples:\n"
-            '  python scan_assets.py --repo-dir "C:/repos/apps.studioa3"\n'
-            '  python scan_assets.py --repo-dir ../apps.studioa3 '
-            "--config configs/studio-a3.json\n"
-            '  python scan_assets.py --repo-dir ../apps.studioa3 '
-            "--output-dir ./my-reports\n"
-        ),
-        formatter_class=argparse.RawDescriptionHelpFormatter,
+    parser = build_scanner_argparser(
+        "Validate Unity assets without running Unity.",
+        require_config=False,
     )
-    parser.add_argument(
-        "--repo-dir",
-        required=True,
-        help="Path to the Unity project repository root (must contain Assets/)",
-    )
-    parser.add_argument(
-        "--config",
-        default=None,
-        help="Path to an app config JSON (provides main_scene, app_name, etc.)",
-    )
-    parser.add_argument(
-        "--output-dir",
-        default=None,
-        help="Directory for output JSON (default: output/reports/ in project root)",
-    )
-
     args = parser.parse_args()
 
-    # Resolve and validate repo directory.
     repo_dir = os.path.abspath(args.repo_dir)
-    if not os.path.isdir(repo_dir):
-        print(f"ERROR: Repo directory not found: {repo_dir}")
+    if not os.path.isdir(os.path.join(repo_dir, "Assets")):
+        print(f"ERROR: No Assets/ folder in {repo_dir}")
         sys.exit(2)
 
-    assets_dir = os.path.join(repo_dir, "Assets")
-    if not os.path.isdir(assets_dir):
-        print(f"ERROR: No Assets/ folder in {repo_dir} — is this a Unity project?")
-        sys.exit(2)
-
-    # Load optional config.
-    config = {}
-    if args.config:
-        if not os.path.isfile(args.config):
-            print(f"ERROR: Config file not found: {args.config}")
-            sys.exit(2)
-        with open(args.config, "r", encoding="utf-8") as fh:
-            config = json.load(fh)
-
+    config = load_config(args.config)
     app_name = config.get("app_name", os.path.basename(repo_dir))
-    app_slug = re.sub(r"[^a-z0-9]+", "-", app_name.lower()).strip("-")
+    output_dir = resolve_output_dir(args.output_dir)
 
-    # Output directory.
-    if args.output_dir:
-        output_dir = os.path.abspath(args.output_dir)
-    else:
-        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        output_dir = os.path.join(project_root, "output", "reports")
-    os.makedirs(output_dir, exist_ok=True)
-
-    # -- Run all checks -------------------------------------------------------
     print(f"=== Unity Asset Validator ===")
     print(f"  App:  {app_name}")
     print(f"  Repo: {repo_dir}")
     print()
 
     results = []
-
     print("  [1/5] Checking addressable asset groups...")
     results.append(check_addressable_groups(repo_dir))
-
     print("  [2/5] Checking prefab integrity...")
     results.append(check_prefab_integrity(repo_dir))
-
     print("  [3/5] Checking material shader references...")
     results.append(check_material_shaders(repo_dir))
-
     print("  [4/5] Checking for missing .meta files...")
     results.append(check_missing_meta_files(repo_dir))
-
     print("  [5/5] Checking scenes...")
     results.append(check_scenes(repo_dir, config))
 
-    # -- Build results JSON (compatible with coverage_report.py) ---------------
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    data = {
-        "release_version": config.get("expected_version", "unknown"),
-        "app_name": app_name,
-        "test_date": datetime.now().strftime("%Y-%m-%d"),
-        "tester": "Automated Asset Scan",
-        "environment": {
-            "scan_type": "Asset validation (no Unity runtime)",
-            "repo_path": repo_dir,
-            "unity_version": config.get("unity_version", "unknown"),
-        },
-        "results": results,
-    }
-
-    results_path = os.path.join(
-        output_dir, f"asset_scan_{app_slug}_{timestamp}.json"
+    results_path, _ = save_results(
+        results, app_name, config, output_dir,
+        scanner_name="asset_scan",
+        tester="Automated Asset Scan",
+        extra_env={"scan_type": "Asset validation (no Unity runtime)",
+                    "repo_path": repo_dir},
     )
-    with open(results_path, "w", encoding="utf-8") as fh:
-        json.dump(data, fh, indent=2)
-
-    # -- Console summary -------------------------------------------------------
-    pass_count = sum(1 for r in results if r["status"] == "pass")
-    fail_count = sum(1 for r in results if r["status"] == "fail")
-    skip_count = sum(1 for r in results if r["status"] == "skip")
-
-    print()
-    print(f"{'=' * 64}")
-    print(f"  ASSET SCAN RESULTS: {app_name}")
-    print(f"{'=' * 64}")
-    for r in results:
-        icon = {"pass": "[+] PASS", "fail": "[X] FAIL", "skip": "[-] SKIP"}[
-            r["status"]
-        ]
-        line = f"  {icon}: {r['id']} - {r['title']}"
-        if r["status"] != "pass" and r.get("notes"):
-            # Print first line of notes inline; rest is in the JSON.
-            first_line = r["notes"].split("\n")[0]
-            line += f"\n         {first_line}"
-        print(line)
-    print(f"{'-' * 64}")
-    print(
-        f"  Total: {len(results)} | Pass: {pass_count} | "
-        f"Fail: {fail_count} | Skip: {skip_count}"
-    )
-    print(f"{'=' * 64}")
-    print()
-    print(f"Results saved to: {results_path}")
-    print()
-    print("To generate an HTML report:")
-    cfg_flag = f' --config {args.config}' if args.config else ""
-    print(
-        f'  python 03-test-management/coverage_report.py '
-        f'--results-file "{results_path}"{cfg_flag} --output html'
-    )
-
+    fail_count = print_summary(results, app_name, results_path, args.config)
     sys.exit(1 if fail_count > 0 else 0)
 
 

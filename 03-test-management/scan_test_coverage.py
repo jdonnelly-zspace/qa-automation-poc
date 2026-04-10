@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 """
 scan_test_coverage.py - Identify C# scripts with no test coverage.
 
@@ -27,22 +28,7 @@ import sys
 from collections import defaultdict
 from datetime import datetime
 
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-def check(test_id, title, category, priority, passed, notes=""):
-    """Create a test result entry (pass or fail)."""
-    return {
-        "id": test_id,
-        "title": title,
-        "category": category,
-        "priority": priority,
-        "status": "pass" if passed else "fail",
-        "notes": notes if not passed else "",
-        "remediation": "" if passed else notes,
-    }
+from qa_common import check, load_config, resolve_output_dir, app_slug as make_app_slug
 
 
 # Directories that contain test code (case-insensitive match).
@@ -473,28 +459,13 @@ def main():
 
     assets_dir = os.path.join(repo_dir, "Assets")
     if not os.path.isdir(assets_dir):
-        print(f"ERROR: No Assets/ folder in {repo_dir} — is this a Unity project?")
+        print(f"ERROR: No Assets/ folder in {repo_dir} -- is this a Unity project?")
         sys.exit(2)
 
-    # Load optional config.
-    config = {}
-    if args.config:
-        if not os.path.isfile(args.config):
-            print(f"ERROR: Config file not found: {args.config}")
-            sys.exit(2)
-        with open(args.config, "r", encoding="utf-8") as fh:
-            config = json.load(fh)
-
+    config = load_config(args.config)
     app_name = config.get("app_name", os.path.basename(repo_dir))
-    app_slug = re.sub(r"[^a-z0-9]+", "-", app_name.lower()).strip("-")
-
-    # Output directory.
-    if args.output_dir:
-        output_dir = os.path.abspath(args.output_dir)
-    else:
-        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        output_dir = os.path.join(project_root, "output", "reports")
-    os.makedirs(output_dir, exist_ok=True)
+    app_slug = make_app_slug(app_name)
+    output_dir = resolve_output_dir(args.output_dir)
 
     # -- Discovery -------------------------------------------------------------
     print(f"=== Test Coverage Scanner ===")

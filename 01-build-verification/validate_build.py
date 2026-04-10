@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 """
 validate_build.py - Post-Build Validation for Franklin's Lab A3 Unity Builds
 =============================================================================

@@ -1,0 +1,6 @@
+# QA Automation POC - Dependencies
+# Python 3.9+ required (uses from __future__ import annotations for 3.9 compat)
+# All dependencies are Python standard library — no third-party packages needed.
+#
+# stdlib modules used: argparse, csv, glob, json, os, pathlib, re, subprocess,
+#                      sys, textwrap, urllib, html, xml.etree.ElementTree

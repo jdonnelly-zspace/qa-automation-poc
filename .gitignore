@@ -1,8 +1,21 @@
 __pycache__/
 *.pyc
+*.pyo
 test_output/
 
-# Generated reports and output (keep folder structure, ignore contents)
+# Environment and secrets
+.env
+.env.*
+credentials.json
+secrets.json
+
+# OS files
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+
+# Generated output (keep folder structure via .gitkeep)
 output/reports/*.html
 output/reports/*.md
 output/**/*.csv

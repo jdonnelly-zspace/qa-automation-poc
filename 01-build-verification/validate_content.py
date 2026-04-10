@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 """
 validate_content.py - Activity Pack Content Validation for Franklin's Lab A3
 =============================================================================

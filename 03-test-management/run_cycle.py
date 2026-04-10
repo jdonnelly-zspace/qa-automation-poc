@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 """
 run_cycle.py - Generate a complete test cycle for a zSpace application release.
 
@@ -1058,7 +1059,7 @@ def create_jira_tickets(payloads: list[dict]) -> list[dict]:
 
         try:
             req = urllib_request.Request(api_url, data=body, headers=headers, method="POST")
-            with urllib_request.urlopen(req) as resp:
+            with urllib_request.urlopen(req, timeout=30) as resp:
                 result = json.loads(resp.read().decode("utf-8"))
                 jira_key = result.get("key", "???")
                 url = f"{base_url}/browse/{jira_key}"
@@ -1066,7 +1067,12 @@ def create_jira_tickets(payloads: list[dict]) -> list[dict]:
                 print(f"  [{i}/{len(payloads)}] Created {jira_key} - {meta['test_id']}")
         except HTTPError as e:
             error_body = e.read().decode("utf-8") if e.fp else ""
-            print(f"  [{i}/{len(payloads)}] FAILED {meta['test_id']}: HTTP {e.code} - {error_body[:200]}")
+            # Mask any auth details that might appear in error responses
+            safe_body = error_body[:200].replace(token, "***").replace(email, "***")
+            print(f"  [{i}/{len(payloads)}] FAILED {meta['test_id']}: HTTP {e.code} - {safe_body}")
+            if e.code in (401, 403):
+                print("  ERROR: Authentication failed. Check JIRA_API_TOKEN and JIRA_USER_EMAIL.")
+                break
         except URLError as e:
             print(f"  [{i}/{len(payloads)}] FAILED {meta['test_id']}: {e.reason}")
 

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 """
 parse_unity_results.py - Parse NUnit XML results from Unity Test Runner
 into the JSON format used by coverage_report.py.

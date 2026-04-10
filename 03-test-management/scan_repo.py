@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 """
 scan_repo.py - Scan a zSpace Unity repo and generate real test results.
 
@@ -20,7 +21,6 @@ Usage:
 Part of Prototype #3 - QA Automation POC for zSpace Unity AR/VR applications.
 """
 
-import argparse
 import glob
 import json
 import os
@@ -28,30 +28,7 @@ import re
 import sys
 from datetime import datetime
 
-
-def check(test_id, title, category, priority, passed, notes=""):
-    """Create a test result entry."""
-    return {
-        "id": test_id,
-        "title": title,
-        "category": category,
-        "priority": priority,
-        "status": "pass" if passed else "fail",
-        "notes": notes if not passed else "",
-        "remediation": "" if passed else notes,
-    }
-
-
-def skip(test_id, title, category, priority, reason):
-    """Create a skipped test result entry."""
-    return {
-        "id": test_id,
-        "title": title,
-        "category": category,
-        "priority": priority,
-        "status": "skip",
-        "notes": reason,
-    }
+from qa_common import check, skip, build_scanner_argparser, load_config, app_slug, resolve_output_dir, save_results, print_summary
 
 
 def scan_project_structure(repo_dir, config):
@@ -277,6 +254,7 @@ def scan_content(repo_dir, config):
 def scan_code_quality(repo_dir, config):
     """Basic static analysis checks on the codebase."""
     results = []
+    skipped_files = 0
 
     cs_files = glob.glob(os.path.join(repo_dir, "Assets", "**", "*.cs"), recursive=True)
 
@@ -291,8 +269,8 @@ def scan_code_quality(repo_dir, config):
             if markers > 0:
                 critical_markers += markers
                 files_with_markers.append(os.path.relpath(cs_file, repo_dir))
-        except Exception:
-            pass
+        except (IOError, OSError, UnicodeDecodeError):
+            skipped_files += 1
 
     results.append(check(
         "CODE-001", f"Code markers (TODO/HACK/FIXME): {critical_markers} found in {len(files_with_markers)} files",
@@ -308,8 +286,8 @@ def scan_code_quality(repo_dir, config):
             with open(cs_file, "r", encoding="utf-8", errors="ignore") as f:
                 content = f.read()
             empty_catches += len(re.findall(r'catch\s*\([^)]*\)\s*\{\s*\}', content))
-        except Exception:
-            pass
+        except (IOError, OSError, UnicodeDecodeError):
+            skipped_files += 1
 
     results.append(check(
         "CODE-002", f"Empty catch blocks: {empty_catches} found",
@@ -335,6 +313,9 @@ def scan_code_quality(repo_dir, config):
         "No zSpace SDK files found — this may not be a zSpace app"
     ))
 
+    if skipped_files > 0:
+        print(f"  Warning: {skipped_files} .cs files could not be read (encoding/permission issues)")
+
     return results
 
 
@@ -351,8 +332,8 @@ def scan_licensing_readiness(repo_dir, config):
                 content = f.read()
             if re.search(r'[Ll]icens', content):
                 licensing_refs += 1
-        except Exception:
-            pass
+        except (IOError, OSError, UnicodeDecodeError):
+            skipped_files += 1
 
     results.append(check(
         "LIC-001", f"Licensing code references ({licensing_refs} files)", "Licensing Readiness", "High",
@@ -392,26 +373,9 @@ def scan_hardware_tests(repo_dir, config):
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="Scan a zSpace Unity repo and generate real test results.",
-        epilog="Example: python scan_repo.py --repo-dir ../apps.studioa3 --config ../configs/studio-a3.json",
+    parser = build_scanner_argparser(
+        "Scan a zSpace Unity repo and generate real test results."
     )
-    parser.add_argument(
-        "--repo-dir",
-        required=True,
-        help="Path to the Unity project repository root",
-    )
-    parser.add_argument(
-        "--config",
-        required=True,
-        help="Path to the app config JSON file",
-    )
-    parser.add_argument(
-        "--output-dir",
-        default=None,
-        help="Directory for output (default: output/reports/ in project root)",
-    )
-
     args = parser.parse_args()
 
     repo_dir = os.path.abspath(args.repo_dir)
@@ -419,18 +383,9 @@ def main():
         print(f"ERROR: Repo directory not found: {repo_dir}")
         sys.exit(1)
 
-    with open(args.config, "r", encoding="utf-8") as f:
-        config = json.load(f)
-
+    config = load_config(args.config)
     app_name = config.get("app_name", "Unknown App")
-    app_slug = app_name.replace("'", "").replace(" ", "-").lower()
-
-    if args.output_dir is None:
-        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        output_dir = os.path.join(project_root, "output", "reports")
-    else:
-        output_dir = args.output_dir
-    os.makedirs(output_dir, exist_ok=True)
+    output_dir = resolve_output_dir(args.output_dir)
 
     print(f"=== zSpace Repo Scanner ===")
     print(f"  App:  {app_name}")
@@ -461,52 +416,15 @@ def main():
     print("Marking hardware-dependent tests...")
     all_results.extend(scan_hardware_tests(repo_dir, config))
 
-    # Build the results JSON.
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    data = {
-        "release_version": config.get("expected_version", "1.0.0"),
-        "app_name": app_name,
-        "test_date": datetime.now().strftime("%Y-%m-%d"),
-        "tester": "Automated Repo Scan",
-        "environment": {
-            "scan_type": "Source code analysis (no build, no hardware)",
-            "repo_path": repo_dir,
-            "unity_version": config.get("unity_version", "unknown"),
-            "test_framework": config.get("test_framework_version", "unknown"),
-        },
-        "results": all_results,
-    }
-
-    # Write results JSON.
-    results_path = os.path.join(output_dir, f"scan_results_{app_slug}_{timestamp}.json")
-    with open(results_path, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2)
-
-    # Print summary.
-    pass_count = sum(1 for r in all_results if r["status"] == "pass")
-    fail_count = sum(1 for r in all_results if r["status"] == "fail")
-    skip_count = sum(1 for r in all_results if r["status"] == "skip")
-    total = len(all_results)
-
-    print()
-    print(f"{'='*60}")
-    print(f"  SCAN RESULTS: {app_name}")
-    print(f"{'='*60}")
-    for r in all_results:
-        icon = {"pass": "[+] PASS", "fail": "[X] FAIL", "skip": "[-] SKIP"}[r["status"]]
-        line = f"  {icon}: {r['id']} - {r['title']}"
-        if r["status"] != "pass" and r.get("notes"):
-            line += f"\n         {r['notes']}"
-        print(line)
-    print(f"{'-'*60}")
-    print(f"  Total: {total} | Pass: {pass_count} | Fail: {fail_count} | Skip: {skip_count}")
-    print(f"{'='*60}")
-    print()
-    print(f"Results saved to: {results_path}")
-    print()
-    print(f"To generate the HTML report from these results:")
-    print(f"  python 03-test-management/coverage_report.py --results-file \"{results_path}\" --config {args.config} --output html")
-
+    # Write results and print summary.
+    results_path, _ = save_results(
+        all_results, app_name, config, output_dir,
+        scanner_name="scan_results",
+        tester="Automated Repo Scan",
+        extra_env={"repo_path": repo_dir,
+                    "test_framework": config.get("test_framework_version", "unknown")},
+    )
+    fail_count = print_summary(all_results, app_name, results_path, args.config)
     sys.exit(1 if fail_count > 0 else 0)
 
 

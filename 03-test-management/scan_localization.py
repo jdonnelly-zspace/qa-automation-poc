@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 """
 scan_localization.py - Scan localization CSV files in a zSpace Unity project.
 
@@ -29,7 +30,6 @@ Usage:
 Part of Prototype #3 - QA Automation POC for zSpace Unity AR/VR applications.
 """
 
-import argparse
 import csv
 import json
 import os
@@ -37,6 +37,8 @@ import re
 import sys
 from datetime import datetime
 from pathlib import Path
+
+from qa_common import check, warn, load_config, resolve_output_dir, app_slug as make_app_slug
 
 
 # ---------------------------------------------------------------------------
@@ -251,29 +253,7 @@ def analyze_csv(csv_path, languages, rows):
 # Result builders (compatible with coverage_report.py)
 # ---------------------------------------------------------------------------
 
-def check(test_id, title, category, priority, passed, notes=""):
-    """Create a test result entry (same format as scan_repo.py)."""
-    return {
-        "id": test_id,
-        "title": title,
-        "category": category,
-        "priority": priority,
-        "status": "pass" if passed else "fail",
-        "notes": notes if not passed else "",
-        "remediation": "" if passed else notes,
-    }
-
-
-def warn(test_id, title, category, priority, notes=""):
-    """Create a warning-level result (status=skip, used for advisory findings)."""
-    return {
-        "id": test_id,
-        "title": title,
-        "category": category,
-        "priority": priority,
-        "status": "skip",
-        "notes": notes,
-    }
+    # check() and warn() are imported from qa_common
 
 
 def build_test_results(csv_path, languages, rows, gaps, lang_stats, summary):
@@ -462,63 +442,29 @@ def print_completeness_table(all_lang_stats, csv_files_processed):
 # ---------------------------------------------------------------------------
 
 def main():
+    import argparse
     parser = argparse.ArgumentParser(
         description="Scan localization CSV files in a zSpace Unity project for translation gaps.",
-        epilog=(
-            "Examples:\n"
-            "  python scan_localization.py --repo-dir ../apps.studioa3 --config configs/studio-a3.json\n"
-            "  python scan_localization.py --repo-dir ../apps.studioa3 --config configs/studio-a3.json "
-            "--csv-files \"Assets/StudioA3/LocalizationData/studioStrings.csv,"
-            "Assets/CommonA3/zSpace/LocalizationData/strings.csv\"\n"
-        ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
+    parser.add_argument("--repo-dir", required=True, help="Path to the Unity project repository root")
+    parser.add_argument("--config", required=True, help="Path to the app config JSON file")
+    parser.add_argument("--output-dir", default=None, help="Directory for output files")
     parser.add_argument(
-        "--repo-dir",
-        required=True,
-        help="Path to the Unity project repository root",
+        "--csv-files", default=None,
+        help="Comma-separated CSV paths relative to --repo-dir (auto-discovers if omitted)",
     )
-    parser.add_argument(
-        "--config",
-        required=True,
-        help="Path to the app config JSON file (used for app_name)",
-    )
-    parser.add_argument(
-        "--output-dir",
-        default=None,
-        help="Directory for output files (default: output/reports/ relative to project root)",
-    )
-    parser.add_argument(
-        "--csv-files",
-        default=None,
-        help=(
-            "Comma-separated list of CSV file paths relative to --repo-dir. "
-            "If omitted, auto-discovers all CSVs under LocalizationData/ folders "
-            "and any vivedStrings.csv."
-        ),
-    )
-
     args = parser.parse_args()
 
-    # -- Validate inputs --
     repo_dir = os.path.abspath(args.repo_dir)
     if not os.path.isdir(repo_dir):
         print(f"ERROR: Repo directory not found: {repo_dir}")
         sys.exit(1)
 
-    with open(args.config, "r", encoding="utf-8") as f:
-        config = json.load(f)
-
+    config = load_config(args.config)
     app_name = config.get("app_name", "Unknown App")
-    app_slug = app_name.replace("'", "").replace(" ", "-").lower()
-
-    # -- Output directory --
-    if args.output_dir is None:
-        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        output_dir = os.path.join(project_root, "output", "reports")
-    else:
-        output_dir = args.output_dir
-    os.makedirs(output_dir, exist_ok=True)
+    app_slug = make_app_slug(app_name)
+    output_dir = resolve_output_dir(args.output_dir)
 
     # -- Resolve CSV files --
     if args.csv_files:

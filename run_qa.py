@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 """
 run_qa.py - One-command QA Automation for zSpace Unity apps.
 
@@ -35,12 +36,6 @@ OUTPUT_DIR = PROJECT_ROOT / "output" / "reports"
 EXTRA_TESTS_DIR = PROJECT_ROOT / "02-unity-unit-tests" / "EditModeTests"
 CLONE_DIR = PROJECT_ROOT / "repos"
 
-# Map known repo names to config files.
-CONFIG_MAP = {
-    "apps.studioa3": "studio-a3.json",
-    "apps.franklinslab-a3": "franklins-lab-a3.json",
-    "apps.franklinslaba3": "franklins-lab-a3.json",
-}
 
 
 # ---------------------------------------------------------------------------
@@ -48,21 +43,31 @@ CONFIG_MAP = {
 # ---------------------------------------------------------------------------
 
 def run_script(script_name, args_list, label):
-    """Run a Python script and return (success, output_path_if_any)."""
+    """Run a Python script and return (success, output_path_if_any).
+
+    Exit code semantics:
+        0 = all checks passed
+        1 = test failures found (normal — pipeline continues)
+        2+ = script error (pipeline logs warning and continues)
+    """
     cmd = [sys.executable, str(SCRIPTS_DIR / script_name)] + args_list
     print(f"\n{'=' * 64}")
     print(f"  RUNNING: {label}")
-    print(f"  Command: {' '.join(cmd)}")
     print(f"{'=' * 64}\n")
 
-    result = subprocess.run(
-        cmd,
-        cwd=str(PROJECT_ROOT),
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-    )
+    try:
+        result = subprocess.run(
+            cmd,
+            cwd=str(PROJECT_ROOT),
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=300,  # 5 minute timeout per scanner
+        )
+    except subprocess.TimeoutExpired:
+        print(f"  ERROR: {label} timed out after 5 minutes")
+        return False, None
 
     # Print output (safe for Windows cp1252 console)
     if result.stdout:
@@ -70,6 +75,10 @@ def run_script(script_name, args_list, label):
     if result.stderr:
         print(result.stderr.encode("ascii", errors="replace").decode("ascii"),
               file=sys.stderr)
+
+    # Check exit code
+    if result.returncode not in (0, 1):
+        print(f"  WARNING: {label} exited with code {result.returncode} (possible error)")
 
     # Extract the results file path from output (scripts print it)
     output_path = None
@@ -82,7 +91,8 @@ def run_script(script_name, args_list, label):
                     output_path = path_part
                     break
 
-    return result.returncode in (0, 1), output_path  # exit 1 = failures found (OK)
+    success = result.returncode in (0, 1)
+    return success, output_path
 
 
 def resolve_repo(repo_arg):
@@ -107,15 +117,21 @@ def resolve_repo(repo_arg):
                 ["git", "pull", "--ff-only"],
                 cwd=str(clone_target),
                 capture_output=True,
+                timeout=120,
             )
         else:
             print(f"  Cloning {repo_arg} -> {clone_target}")
             CLONE_DIR.mkdir(parents=True, exist_ok=True)
-            result = subprocess.run(
-                ["git", "clone", "--depth", "1", repo_arg, str(clone_target)],
-                capture_output=True,
-                text=True,
-            )
+            try:
+                result = subprocess.run(
+                    ["git", "clone", "--depth", "1", repo_arg, str(clone_target)],
+                    capture_output=True,
+                    text=True,
+                    timeout=300,
+                )
+            except subprocess.TimeoutExpired:
+                print(f"  ERROR: Clone timed out after 5 minutes")
+                return None, repo_name
             if result.returncode != 0:
                 print(f"  ERROR: Clone failed: {result.stderr}")
                 return None, repo_name
@@ -125,6 +141,7 @@ def resolve_repo(repo_arg):
                 ["git", "submodule", "update", "--init", "--recursive"],
                 cwd=str(clone_target),
                 capture_output=True,
+                timeout=300,
             )
 
         return str(clone_target), repo_name
@@ -143,7 +160,12 @@ def resolve_repo(repo_arg):
 
 
 def find_config(repo_name, explicit_config=None):
-    """Find the config file for a repo. Returns path or None."""
+    """Find the config file for a repo. Returns path or None.
+
+    Auto-detection scans all JSON files in configs/ and matches
+    the app_name field against the repo folder name. No hardcoded
+    mapping — just drop a new config file in configs/ to add an app.
+    """
     if explicit_config:
         cfg = Path(explicit_config)
         if not cfg.is_absolute():
@@ -152,13 +174,20 @@ def find_config(repo_name, explicit_config=None):
             return str(cfg)
         print(f"  Warning: Config not found: {explicit_config}")
 
-    # Auto-detect from repo name
-    for pattern, config_file in CONFIG_MAP.items():
-        if pattern in repo_name.lower().replace("-", "").replace("_", ""):
-            cfg = CONFIGS_DIR / config_file
-            if cfg.exists():
-                print(f"  Auto-detected config: {cfg}")
-                return str(cfg)
+    # Auto-detect by scanning configs/ directory
+    repo_key = repo_name.lower().replace("-", "").replace("_", "").replace(".", "")
+    for cfg_file in sorted(CONFIGS_DIR.glob("*.json")):
+        try:
+            with open(cfg_file, "r", encoding="utf-8") as f:
+                cfg_data = json.load(f)
+            app_name = cfg_data.get("app_name", "")
+            app_key = app_name.lower().replace("-", "").replace("_", "").replace(".", "").replace("'", "").replace(" ", "")
+            # Match if repo name contains the app key or vice versa
+            if app_key in repo_key or repo_key in app_key:
+                print(f"  Auto-detected config: {cfg_file}")
+                return str(cfg_file)
+        except (json.JSONDecodeError, IOError):
+            continue
 
     print(f"  Warning: No config found for '{repo_name}'. Scanners will use defaults.")
     return None

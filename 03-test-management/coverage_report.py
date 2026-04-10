@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 """
 coverage_report.py - Generate a test coverage dashboard from test results.
 
@@ -23,6 +24,7 @@ Part of Prototype #3 - QA Automation POC for zSpace Unity AR/VR applications.
 
 import argparse
 import csv
+import html as html_mod
 import json
 import os
 import sys
@@ -32,13 +34,17 @@ from pathlib import Path
 
 
 # ---------------------------------------------------------------------------
-# Embedded sample results (used when no --results-file is provided)
-# ---------------------------------------------------------------------------
-# This mirrors the data in templates/sample_results.json and allows the
-# script to produce a realistic dashboard without any external files.
+# Sample results fallback (loaded from templates/sample_results.json)
 # ---------------------------------------------------------------------------
 
-SAMPLE_RESULTS = {
+def _load_sample_results():
+    """Load sample results from the templates directory."""
+    sample_path = os.path.join(os.path.dirname(__file__), "templates", "sample_results.json")
+    if os.path.isfile(sample_path):
+        with open(sample_path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    # Minimal fallback if template file is missing
+    return {
     "release_version": "2.1.0",
     "app_name": "Franklin's Lab A3",
     "test_date": "2026-04-09",
@@ -88,6 +94,8 @@ SAMPLE_RESULTS = {
         {"id": "PLAT-002", "title": "Windows Update does not break application", "category": "Platform Features", "priority": "Medium", "status": "pass"},
     ],
 }
+
+SAMPLE_RESULTS = _load_sample_results()
 
 
 # ---------------------------------------------------------------------------
@@ -391,7 +399,7 @@ def _progress_bar_html(label: str, passed: int, failed: int, skipped: int, total
 
     return f"""
     <div class="category-row">
-      <div class="category-label">{label}</div>
+      <div class="category-label">{html_mod.escape(label)}</div>
       <div class="bar-container">
         <div class="bar-segment bar-pass" style="width:{pass_pct:.1f}%"></div>
         <div class="bar-segment bar-fail" style="width:{fail_pct:.1f}%"></div>
@@ -441,9 +449,10 @@ def generate_html(data: dict, analysis: dict, output_path: str) -> str:
 
     # Build failure cards (each failure gets its own card with remediation).
     failure_cards = ""
+    esc = html_mod.escape
     for f in analysis["failures"]:
-        notes = f.get("notes", "")
-        remediation = get_remediation(f)
+        notes = esc(f.get("notes", ""))
+        remediation = esc(get_remediation(f))
         has_known_fix = bool(f.get("remediation"))
         fix_label = "Known Fix" if has_known_fix else "RCA Playbook"
         fix_icon = "&#9989;" if has_known_fix else "&#128270;"  # checkmark vs magnifying glass
@@ -451,11 +460,11 @@ def generate_html(data: dict, analysis: dict, output_path: str) -> str:
         failure_cards += f"""
         <div class="failure-card">
           <div class="failure-header">
-            <code>{f['id']}</code>
-            <span class="priority-{f.get('priority','Medium').lower()}">{f.get('priority','Medium')}</span>
-            <span class="failure-category">{f.get('category','')}</span>
+            <code>{esc(f['id'])}</code>
+            <span class="priority-{esc(f.get('priority','Medium').lower())}">{esc(f.get('priority','Medium'))}</span>
+            <span class="failure-category">{esc(f.get('category',''))}</span>
           </div>
-          <div class="failure-title">{f['title']}</div>
+          <div class="failure-title">{esc(f['title'])}</div>
           {"<div class='failure-notes'><strong>Observation:</strong> " + notes + "</div>" if notes else ""}
           <div class="failure-remediation">
             <div class="remediation-label">{fix_icon} {fix_label}</div>
@@ -467,13 +476,12 @@ def generate_html(data: dict, analysis: dict, output_path: str) -> str:
     # Build skipped rows.
     skip_rows = ""
     for s in analysis["skipped"]:
-        notes = s.get("notes", "")
         skip_rows += f"""
         <tr>
-          <td><code>{s['id']}</code></td>
-          <td>{s['title']}</td>
-          <td>{s.get('category','')}</td>
-          <td>{notes}</td>
+          <td><code>{esc(s['id'])}</code></td>
+          <td>{esc(s['title'])}</td>
+          <td>{esc(s.get('category',''))}</td>
+          <td>{esc(s.get('notes',''))}</td>
         </tr>
         """
 
@@ -482,17 +490,17 @@ def generate_html(data: dict, analysis: dict, output_path: str) -> str:
     for p in analysis["passed"]:
         pass_rows += f"""
         <tr>
-          <td><code>{p['id']}</code></td>
-          <td>{p['title']}</td>
-          <td><span class="priority-{p.get('priority','Medium').lower()}">{p.get('priority','Medium')}</span></td>
-          <td>{p.get('category','')}</td>
+          <td><code>{esc(p['id'])}</code></td>
+          <td>{esc(p['title'])}</td>
+          <td><span class="priority-{esc(p.get('priority','Medium').lower())}">{esc(p.get('priority','Medium'))}</span></td>
+          <td>{esc(p.get('category',''))}</td>
         </tr>
         """
 
     # Environment info section.
     env_html = ""
     if env:
-        env_items = "".join(f"<li><strong>{k}:</strong> {v}</li>" for k, v in env.items())
+        env_items = "".join(f"<li><strong>{esc(str(k))}:</strong> {esc(str(v))}</li>" for k, v in env.items())
         env_html = f"<ul>{env_items}</ul>"
     else:
         env_html = "<p>No environment data provided.</p>"
@@ -502,7 +510,7 @@ def generate_html(data: dict, analysis: dict, output_path: str) -> str:
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Test Coverage Report - {app} v{release}</title>
+  <title>Test Coverage Report - {esc(app)} v{esc(release)}</title>
   <style>
     * {{ box-sizing: border-box; margin: 0; padding: 0; }}
     body {{
@@ -674,7 +682,7 @@ def generate_html(data: dict, analysis: dict, output_path: str) -> str:
   <div class="container">
     <h1>Test Coverage Report</h1>
     <div class="meta">
-      {app} &mdash; v{release} &mdash; {test_date} &mdash; Generated {generated}
+      {esc(app)} &mdash; v{esc(release)} &mdash; {esc(test_date)} &mdash; Generated {esc(generated)}
     </div>
 
     <div class="status-banner {status_class}">{status_text}</div>
