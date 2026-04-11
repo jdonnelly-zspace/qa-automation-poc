@@ -330,6 +330,12 @@ def run_pipeline(repo_dir, repo_name, config_path):
     )
     report_path = reports[0] if reports else None
 
+    # -- 8. Hint: Jira issue creation from failures ----------------------------
+    if config_path:
+        logger.info("")
+        logger.info("  To create Jira issues from failures:")
+        logger.info('    python 03-test-management/create_jira_issues.py --results-file "%s" --config %s --dry-run', merged_path, config_path)
+
     return report_path
 
 

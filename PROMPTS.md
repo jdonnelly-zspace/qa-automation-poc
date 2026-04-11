@@ -45,3 +45,28 @@ Each prompt triggers the full pipeline:
 4. Generates an HTML dashboard in `output/reports/`
 
 No flags, configs, or extra setup needed.
+
+---
+
+## Create Jira Issues from Scan Failures
+
+```
+Run the QA scan for Studio A3, then create Jira issues from any failures:
+
+1. python run_qa.py ../apps.studioa3
+2. python 03-test-management/create_jira_issues.py --results-file output/reports/full_scan_studio-a3_*.json --config configs/studio-a3.json --dry-run
+3. Review the preview, then create each issue using the Jira MCP tools.
+```
+
+### Dry Run Only (Preview)
+
+```
+Preview what Jira issues would be created from the latest scan:
+  python 03-test-management/create_jira_issues.py --results-file output/reports/full_scan_studio-a3_*.json --config configs/studio-a3.json --dry-run --skip-dedup
+```
+
+### Franklin's Lab A3
+
+```
+python 03-test-management/create_jira_issues.py --results-file output/reports/full_scan_franklins-lab-a3_*.json --config configs/franklins-lab-a3.json --dry-run
+```

@@ -20,5 +20,11 @@
   "shortcut_paths": [
     "%ProgramData%\\Microsoft\\Windows\\Start Menu\\Programs\\zSpace\\Franklin's Lab A3.lnk",
     "%PUBLIC%\\Desktop\\Franklin's Lab A3.lnk"
-  ]
+  ],
+  "jira": {
+    "project_key": "FL",
+    "default_issue_type": "Bug",
+    "component": "Franklin's Lab A3",
+    "labels": ["qa-automation"]
+  }
 }

@@ -32,5 +32,11 @@
   "shortcut_paths": [
     "%ProgramData%\\Microsoft\\Windows\\Start Menu\\Programs\\zSpace\\Studio A3.lnk",
     "%PUBLIC%\\Desktop\\Studio A3.lnk"
-  ]
+  ],
+  "jira": {
+    "project_key": "ZSSTUDIO",
+    "default_issue_type": "Bug",
+    "component": "Application",
+    "labels": ["qa-automation"]
+  }
 }
