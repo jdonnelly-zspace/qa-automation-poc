@@ -26,11 +26,14 @@ import argparse
 import csv
 import html as html_mod
 import json
+import logging
 import os
 import sys
 from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -202,7 +205,7 @@ def load_results(results_file: str | None) -> dict:
         if ext == ".json":
             with open(results_file, "r", encoding="utf-8") as f:
                 data = json.load(f)
-            print(f"  Loaded {len(data.get('results', []))} results from {results_file}")
+            logger.info("  Loaded %d results from %s", len(data.get("results", [])), results_file)
             return data
 
         elif ext == ".csv":
@@ -218,7 +221,7 @@ def load_results(results_file: str | None) -> dict:
                         "status": row.get("status", "pending").lower(),
                         "notes": row.get("notes", ""),
                     })
-            print(f"  Loaded {len(results)} results from {results_file}")
+            logger.info("  Loaded %d results from %s", len(results), results_file)
             return {
                 "release_version": "unknown",
                 "app_name": "unknown",
@@ -227,9 +230,9 @@ def load_results(results_file: str | None) -> dict:
             }
 
         else:
-            print(f"  Warning: Unsupported file format '{ext}'. Using sample data.")
+            logger.warning("  Warning: Unsupported file format '%s'. Using sample data.", ext)
 
-    print("  Using embedded sample results (standalone POC mode)")
+    logger.info("  Using embedded sample results (standalone POC mode)")
     return SAMPLE_RESULTS
 
 
@@ -776,8 +779,15 @@ def main():
         default=None,
         help="Path to a JSON config file (e.g., configs/studio-a3.json). Sets the app name for the report.",
     )
+    parser.add_argument("--verbose", action="store_true", help="Enable verbose logging")
+    parser.add_argument("--quiet", action="store_true", help="Suppress informational output")
 
     args = parser.parse_args()
+
+    level = logging.DEBUG if args.verbose else logging.WARNING if args.quiet else logging.INFO
+    # Matches setup_logging() in qa_common.py
+    logging.basicConfig(level=level, format="%(message)s",
+                        handlers=[logging.StreamHandler(sys.stdout)])
 
     # Default output dir to output/reports/ relative to the project root.
     if args.output_dir is None:
@@ -790,26 +800,26 @@ def main():
         with open(args.config, "r", encoding="utf-8") as f:
             config = json.load(f)
         config_app_name = config.get("app_name")
-        print(f"  Loaded config: {args.config} (app: {config_app_name})")
+        logger.info("  Loaded config: %s (app: %s)", args.config, config_app_name)
 
-    print("=== zSpace QA Coverage Report Generator ===")
-    print()
+    logger.info("=== zSpace QA Coverage Report Generator ===")
+    logger.info("")
 
     # Load test results.
-    print("Loading results...")
+    logger.info("Loading results...")
     data = load_results(args.results_file)
     results = data.get("results", [])
 
     if not results:
-        print("  Error: No test results found.")
+        logger.error("  Error: No test results found.")
         sys.exit(1)
 
     # Override app_name from config if provided.
     if config_app_name:
         data["app_name"] = config_app_name
 
-    print(f"  {len(results)} test results loaded for {data.get('app_name', 'N/A')}")
-    print()
+    logger.info("  %d test results loaded for %s", len(results), data.get("app_name", "N/A"))
+    logger.info("")
 
     # Analyze.
     analysis = analyze_results(results)
@@ -825,28 +835,28 @@ def main():
         output_path = os.path.join(args.output_dir, f"coverage_report_{app_slug}_{release}_{timestamp}.md")
         with open(output_path, "w", encoding="utf-8") as f:
             f.write(md)
-        print(f"Markdown report written to: {output_path}")
+        logger.info("Markdown report written to: %s", output_path)
         # Also print to stdout for terminal viewing.
-        print()
-        print(md)
+        logger.info("")
+        logger.info(md)
 
     elif args.output == "html":
         output_path = os.path.join(args.output_dir, f"coverage_report_{app_slug}_{release}_{timestamp}.html")
         generate_html(data, analysis, output_path)
-        print(f"HTML report written to: {output_path}")
+        logger.info("HTML report written to: %s", output_path)
 
     # Summary line.
-    print()
-    print(f"Summary: {analysis['pass_count']} passed, {analysis['fail_count']} failed, "
-          f"{analysis['skip_count']} skipped out of {analysis['total']} total "
-          f"({analysis['pass_rate']}% pass rate)")
+    logger.info("")
+    logger.info("Summary: %d passed, %d failed, %d skipped out of %d total (%s%% pass rate)",
+                analysis['pass_count'], analysis['fail_count'],
+                analysis['skip_count'], analysis['total'], analysis['pass_rate'])
 
     # Exit code: 0 if no failures, 1 if any failures.
     if analysis["fail_count"] > 0:
-        print(f"\nExit code 1: {analysis['fail_count']} test failure(s) detected.")
+        logger.info("\nExit code 1: %d test failure(s) detected.", analysis['fail_count'])
         sys.exit(1)
     else:
-        print("\nExit code 0: No failures.")
+        logger.info("\nExit code 0: No failures.")
         sys.exit(0)
 
 

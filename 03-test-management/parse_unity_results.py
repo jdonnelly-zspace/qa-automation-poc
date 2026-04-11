@@ -13,11 +13,14 @@ Part of Prototype #2 - QA Automation POC for zSpace Unity AR/VR applications.
 
 import argparse
 import json
+import logging
 import os
 import sys
 import xml.etree.ElementTree as ET
 from datetime import datetime
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 
 def parse_nunit_xml(xml_path):
@@ -111,11 +114,19 @@ def main():
         "--merge-with", default=None,
         help="Merge results with an existing JSON results file"
     )
+    parser.add_argument("--verbose", action="store_true", help="Enable verbose logging")
+    parser.add_argument("--quiet", action="store_true", help="Suppress informational output")
+
     args = parser.parse_args()
+
+    level = logging.DEBUG if args.verbose else logging.WARNING if args.quiet else logging.INFO
+    # Matches setup_logging() in qa_common.py
+    logging.basicConfig(level=level, format="%(message)s",
+                        handlers=[logging.StreamHandler(sys.stdout)])
 
     xml_path = Path(args.xml_file)
     if not xml_path.exists():
-        print(f"Error: XML file not found: {xml_path}")
+        logger.error("Error: XML file not found: %s", xml_path)
         sys.exit(1)
 
     # Determine output directory
@@ -128,13 +139,13 @@ def main():
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # Parse
-    print(f"Parsing Unity test results: {xml_path}")
+    logger.info("Parsing Unity test results: %s", xml_path)
     results, root = parse_nunit_xml(xml_path)
     summary = get_run_summary(root)
 
-    print(f"  Total: {summary['total']}, Passed: {summary['passed']}, "
-          f"Failed: {summary['failed']}, Skipped: {summary['skipped']}")
-    print(f"  Duration: {summary['duration']:.3f}s")
+    logger.info("  Total: %d, Passed: %d, Failed: %d, Skipped: %d",
+                summary['total'], summary['passed'], summary['failed'], summary['skipped'])
+    logger.info("  Duration: %.3fs", summary['duration'])
 
     # Build output JSON
     app_slug = args.app_name.lower().replace(" ", "-").replace("'", "")
@@ -157,7 +168,7 @@ def main():
     if args.merge_with:
         merge_path = Path(args.merge_with)
         if merge_path.exists():
-            print(f"  Merging with: {merge_path}")
+            logger.info("  Merging with: %s", merge_path)
             with open(merge_path, "r", encoding="utf-8") as f:
                 existing = json.load(f)
             # Add unity results to existing results list
@@ -165,20 +176,20 @@ def main():
             existing["tester"] += " + Unity Test Runner"
             output_data = existing
         else:
-            print(f"  Warning: Merge file not found: {merge_path}")
+            logger.warning("  Warning: Merge file not found: %s", merge_path)
 
     # Save standalone unity results JSON
     unity_json = output_dir / f"unity_results_{app_slug}_{timestamp}.json"
     with open(unity_json, "w", encoding="utf-8") as f:
         json.dump(output_data, f, indent=2)
-    print(f"  Saved: {unity_json}")
+    logger.info("  Saved: %s", unity_json)
 
     # If merging, also save the merged file
     if args.merge_with and Path(args.merge_with).exists():
         merged_json = output_dir / f"combined_scan_{app_slug}_{timestamp}.json"
         with open(merged_json, "w", encoding="utf-8") as f:
             json.dump(output_data, f, indent=2)
-        print(f"  Saved merged: {merged_json}")
+        logger.info("  Saved merged: %s", merged_json)
         return str(merged_json)
 
     return str(unity_json)

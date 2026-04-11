@@ -134,6 +134,55 @@ Or pass values directly without a config file:
 | Different build output structure | Update `validate_build.py` required DLLs list if needed |
 | WebGL-only (no Win64) | Only run `--build-type webgl` validation |
 
+## How to Add a New Scanner
+
+If you need a scanner for a new category of checks (beyond source code, localization, assets, and coverage), follow this pattern:
+
+### 1. Create the scanner file
+
+Create `03-test-management/scan_yourcheck.py` and import the shared utilities:
+
+```python
+from qa_common import (
+    check, skip, warn,
+    build_scanner_argparser, load_config, setup_logging,
+    resolve_output_dir, save_results, print_summary,
+)
+```
+
+### 2. Use the standard CLI parser
+
+```python
+def main():
+    parser = build_scanner_argparser("Scan something for a zSpace Unity project")
+    # Add any scanner-specific args:
+    parser.add_argument("--extra-flag", default=None, help="...")
+    args = parser.parse_args()
+    setup_logging(args.verbose, args.quiet)
+```
+
+### 3. Implement scan logic using check()/skip()/warn()
+
+```python
+results = []
+results.append(check("MY-001", "Some check title", "Category", "High",
+                      some_condition, "Detail if failed"))
+results.append(skip("MY-002", "Skipped check", "Category", "Low",
+                     "Reason it was skipped"))
+```
+
+### 4. Save results and print summary
+
+```python
+output_dir = resolve_output_dir(args.output_dir)
+results_path, data = save_results(results, app_name, config, output_dir, "my_scan")
+print_summary(results, app_name, results_path, args.config)
+```
+
+### 5. Wire into run_qa.py
+
+Add your scanner to the `run_pipeline()` function in `run_qa.py`, following the pattern of existing scanner calls.
+
 ## Quick Reference: Studio A3 Commands
 
 ```

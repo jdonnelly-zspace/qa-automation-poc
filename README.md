@@ -12,6 +12,25 @@ Today, Franklin's Lab ships with:
 
 This POC proves that automation is practical and high-value, without requiring zSpace hardware.
 
+## Scope & Limitations
+
+This is a **proof-of-concept**, not a production test suite. Be aware of what it does NOT do:
+
+- **Does not execute tests in Unity** -- The 63 C# files in `02-unity-unit-tests/` are **test templates with stub classes**, not integrated tests. They have never run in a Unity runtime.
+- **Does not connect to zSpace hardware** -- All checks are static analysis (file presence, code patterns, localization completeness). No AR/VR features are tested.
+- **Does not integrate with Jira/TestRail APIs** -- Produces local output files (CSV, XML, Markdown) ready for manual import. API integration is a future backlog item.
+- **Does not validate a running application** -- Checks file presence, build structure, and code patterns. It does not launch the app or verify runtime behavior.
+- **"Coverage %" means "test files exist"** -- When the coverage scanner reports "100% high-priority coverage," it means test template files exist for those scripts. It does NOT mean those tests pass.
+- **Tests must be integrated before they provide real coverage** -- Copy C# templates into a Unity project, replace stub classes with real assembly references, and run in the Unity Test Runner.
+
+### Assumptions
+
+- Target repo is a Unity 2019.4+ project with standard structure (`Assets/`, `ProjectSettings/`, `Packages/manifest.json`)
+- Windows is the primary platform (PowerShell scripts, Windows path conventions, code signing via `Get-AuthenticodeSignature`)
+- Localization data uses CSV format with language columns (e.g., `en-US`, `es`, `fr`, `de`, `ja`, `ko`, `zh-CN`)
+- Test file matching relies on `*Tests.cs` / `*Test.cs` naming convention
+- High-priority scripts are identified by filename keywords: Controller, Manager, Service, Importer, Validator, Cache, Loader
+
 ## The 4 Prototypes
 
 | # | Prototype | What It Does | Effort |
@@ -35,6 +54,8 @@ python run_qa.py https://github.com/zspace/apps.studioa3 https://github.com/zspa
 # Local path
 python run_qa.py ../apps.studioa3
 ```
+
+**Exit codes:** All scripts exit `0` on success, `1` when test failures are found, `2+` on script errors (missing config, bad path, etc.).
 
 See [PROMPTS.md](PROMPTS.md) for ready-to-paste Claude Code prompts.
 

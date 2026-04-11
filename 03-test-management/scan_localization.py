@@ -37,8 +37,17 @@ import re
 import sys
 from datetime import datetime
 from pathlib import Path
+import logging
 
-from qa_common import check, warn, load_config, resolve_output_dir, app_slug as make_app_slug
+from qa_common import check, warn, load_config, resolve_output_dir, app_slug as make_app_slug, setup_logging
+
+logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Thresholds
+# ---------------------------------------------------------------------------
+COMPLETENESS_PASS_THRESHOLD = 95.0   # L10N-001: min % of cells filled to pass
+IDENTICAL_WARN_THRESHOLD = 10.0      # L10N-003: warn if >= this % identical to en-US
 
 
 # ---------------------------------------------------------------------------
@@ -111,7 +120,7 @@ def read_localization_csv(csv_path):
 
         # First column is "TAG" (the key), remaining columns are languages.
         if header[0].upper() != "TAG":
-            print(f"  WARNING: First column is '{header[0]}', expected 'TAG'. Treating as TAG anyway.")
+            logger.warning("  WARNING: First column is '%s', expected 'TAG'. Treating as TAG anyway.", header[0])
 
         languages = header[1:]
 
@@ -150,7 +159,7 @@ def analyze_csv(csv_path, languages, rows):
     baseline_lang = "en-US"
 
     if baseline_lang not in languages:
-        print(f"  WARNING: '{baseline_lang}' column not found in {csv_path}. Skipping analysis.")
+        logger.warning("  WARNING: '%s' column not found in %s. Skipping analysis.", baseline_lang, csv_path)
         return gaps, {}, {"missing": 0, "identical": 0, "placeholder_mismatch": 0}
 
     non_english_languages = [lang for lang in languages if lang != baseline_lang]
@@ -281,7 +290,7 @@ def build_test_results(csv_path, languages, rows, gaps, lang_stats, summary):
     else:
         completeness_pct = 100.0
 
-    passed_completeness = completeness_pct > 95.0
+    passed_completeness = completeness_pct > COMPLETENESS_PASS_THRESHOLD
 
     # Build a per-language breakdown for the notes.
     lang_lines = []
@@ -330,7 +339,7 @@ def build_test_results(csv_path, languages, rows, gaps, lang_stats, summary):
     else:
         identical_pct = 0.0
 
-    if identical_pct >= 10.0:
+    if identical_pct >= IDENTICAL_WARN_THRESHOLD:
         results.append(warn(
             f"L10N-003-{slug}",
             f"Identical-to-English check - {filename}",
@@ -417,15 +426,15 @@ def print_completeness_table(all_lang_stats, csv_files_processed):
                 aggregated[lang][k] += stats[k]
 
     if not aggregated:
-        print("  No language data to display.")
+        logger.info("  No language data to display.")
         return
 
     # Sort languages alphabetically.
     sorted_langs = sorted(aggregated.keys())
 
     # Print table header.
-    print(f"  {'Language':<10} {'Complete':>10} {'Missing':>10} {'Identical':>10} {'PH Mismatch':>12}")
-    print(f"  {'-'*10} {'-'*10} {'-'*10} {'-'*10} {'-'*12}")
+    logger.info("  %-10s %10s %10s %10s %12s", "Language", "Complete", "Missing", "Identical", "PH Mismatch")
+    logger.info("  %s %s %s %s %s", "-"*10, "-"*10, "-"*10, "-"*10, "-"*12)
 
     for lang in sorted_langs:
         s = aggregated[lang]
@@ -433,8 +442,8 @@ def print_completeness_table(all_lang_stats, csv_files_processed):
             pct = ((s["total"] - s["missing"]) / s["total"]) * 100
         else:
             pct = 100.0
-        print(f"  {lang:<10} {pct:>9.1f}% {s['missing']:>10} {s['identical']:>10} "
-              f"{s['placeholder_mismatch']:>12}")
+        logger.info("  %-10s %9.1f%% %10d %10d %12d",
+                     lang, pct, s["missing"], s["identical"], s["placeholder_mismatch"])
 
 
 # ---------------------------------------------------------------------------
@@ -454,11 +463,15 @@ def main():
         "--csv-files", default=None,
         help="Comma-separated CSV paths relative to --repo-dir (auto-discovers if omitted)",
     )
+    parser.add_argument("--verbose", action="store_true", help="Enable verbose logging")
+    parser.add_argument("--quiet", action="store_true", help="Suppress informational output")
     args = parser.parse_args()
+
+    setup_logging(verbose=args.verbose, quiet=args.quiet)
 
     repo_dir = os.path.abspath(args.repo_dir)
     if not os.path.isdir(repo_dir):
-        print(f"ERROR: Repo directory not found: {repo_dir}")
+        logger.error("Repo directory not found: %s", repo_dir)
         sys.exit(1)
 
     config = load_config(args.config)
@@ -475,24 +488,24 @@ def main():
             if os.path.isfile(full_path):
                 csv_paths.append(full_path)
             else:
-                print(f"  WARNING: CSV file not found, skipping: {full_path}")
+                logger.warning("  WARNING: CSV file not found, skipping: %s", full_path)
     else:
         csv_paths = discover_csv_files(repo_dir)
 
     if not csv_paths:
-        print("ERROR: No localization CSV files found.")
-        print("  Use --csv-files to specify paths, or check that the repo contains")
-        print("  files under LocalizationData/ folders.")
+        logger.error("No localization CSV files found.")
+        logger.error("  Use --csv-files to specify paths, or check that the repo contains")
+        logger.error("  files under LocalizationData/ folders.")
         sys.exit(1)
 
     # -- Banner --
-    print(f"=== zSpace Localization Scanner ===")
-    print(f"  App:  {app_name}")
-    print(f"  Repo: {repo_dir}")
-    print(f"  CSV files to scan: {len(csv_paths)}")
+    logger.info("=== zSpace Localization Scanner ===")
+    logger.info("  App:  %s", app_name)
+    logger.info("  Repo: %s", repo_dir)
+    logger.info("  CSV files to scan: %d", len(csv_paths))
     for p in csv_paths:
-        print(f"    - {os.path.relpath(p, repo_dir)}")
-    print()
+        logger.info("    - %s", os.path.relpath(p, repo_dir))
+    logger.info("")
 
     # -- Process each CSV file --
     all_results = []
@@ -501,15 +514,15 @@ def main():
 
     for csv_path in csv_paths:
         rel = os.path.relpath(csv_path, repo_dir)
-        print(f"Scanning: {rel}")
+        logger.info("Scanning: %s", rel)
 
         languages, rows = read_localization_csv(csv_path)
 
         if not languages:
-            print(f"  WARNING: No language columns found.  Skipping.")
+            logger.warning("  WARNING: No language columns found.  Skipping.")
             continue
 
-        print(f"  {len(rows)} keys, {len(languages)} languages: {', '.join(languages)}")
+        logger.info("  %d keys, %d languages: %s", len(rows), len(languages), ", ".join(languages))
 
         gaps, lang_stats, summary = analyze_csv(csv_path, languages, rows)
 
@@ -521,10 +534,9 @@ def main():
         all_results.extend(results)
 
         # Per-file console summary.
-        print(f"  Missing: {summary['missing']}  |  "
-              f"Identical: {summary['identical']}  |  "
-              f"Placeholder: {summary['placeholder_mismatch']}")
-        print()
+        logger.info("  Missing: %d  |  Identical: %d  |  Placeholder: %d",
+                     summary["missing"], summary["identical"], summary["placeholder_mismatch"])
+        logger.info("")
 
     # -- Write results JSON (compatible with coverage_report.py) --
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -544,20 +556,20 @@ def main():
     results_path = os.path.join(output_dir, f"l10n_results_{app_slug}_{timestamp}.json")
     with open(results_path, "w", encoding="utf-8") as f:
         json.dump(results_data, f, indent=2)
-    print(f"Results JSON: {results_path}")
+    logger.info("Results JSON: %s", results_path)
 
     # -- Write detail CSV --
     detail_path = os.path.join(output_dir, f"localization_gaps_{app_slug}_{timestamp}.csv")
     write_detail_csv(detail_path, all_gaps)
-    print(f"Detail CSV:   {detail_path}")
-    print()
+    logger.info("Detail CSV:   %s", detail_path)
+    logger.info("")
 
     # -- Console completeness table --
-    print(f"{'='*64}")
-    print(f"  LOCALIZATION COMPLETENESS BY LANGUAGE")
-    print(f"{'='*64}")
+    logger.info("=" * 64)
+    logger.info("  LOCALIZATION COMPLETENESS BY LANGUAGE")
+    logger.info("=" * 64)
     print_completeness_table(all_lang_stats, csv_paths)
-    print()
+    logger.info("")
 
     # -- Overall summary --
     pass_count = sum(1 for r in all_results if r["status"] == "pass")
@@ -565,15 +577,15 @@ def main():
     warn_count = sum(1 for r in all_results if r["status"] == "skip")
     total = len(all_results)
 
-    print(f"{'='*64}")
-    print(f"  SUMMARY: {app_name}")
-    print(f"{'='*64}")
-    print(f"  Total checks:  {total}")
-    print(f"  Passed:        {pass_count}")
-    print(f"  Failed:        {fail_count}")
-    print(f"  Warnings:      {warn_count}")
-    print(f"  Total gaps:    {len(all_gaps)}")
-    print(f"{'='*64}")
+    logger.info("=" * 64)
+    logger.info("  SUMMARY: %s", app_name)
+    logger.info("=" * 64)
+    logger.info("  Total checks:  %d", total)
+    logger.info("  Passed:        %d", pass_count)
+    logger.info("  Failed:        %d", fail_count)
+    logger.info("  Warnings:      %d", warn_count)
+    logger.info("  Total gaps:    %d", len(all_gaps))
+    logger.info("=" * 64)
 
     # Exit code: 1 if any failures.
     if fail_count > 0:

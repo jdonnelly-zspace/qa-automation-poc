@@ -17,6 +17,11 @@ Prioritized list of future automation items beyond the 4 POC prototypes. Items a
 | 13 | Code Signing Verification | Validate the GlobalSign certificate chain on built executables. Low risk — manual check takes under a minute. | 0.5 weeks | Partially covered by Prototype #1 |
 | 14 | Activity Pack Version Sync | Detect content drift between the two activity-pack repos (production vs source). | 1 week | Git diff tooling |
 
+| 15 | Python Unit Tests for Scanners | Add pytest tests for scanner tooling itself. Mock a Unity repo structure (Assets/, ProjectSettings/, sample .cs files) and verify each scanner produces correct JSON output. | 1-2 weeks | pytest installed |
+| 16 | Unity Integration of C# Test Templates | Copy the 63 stub-based test files from 02-unity-unit-tests/ into a real Unity project, replace stubs with actual assembly references, and run in Unity Test Runner. | 2-3 weeks | Unity project access |
+| 17 | Integration Test Templates | Cross-component tests: DeleteManager+SelectionManager, ToolManager+InputHandler, CameraController+ZViewManager. These test interactions between systems. | 2-3 weeks | Item #16 completed |
+| 18 | Sub-Module Coverage Granularity | Extend scan_test_coverage.py to support 3-level grouping (module > sub-module > script) instead of the current 2-level (module > script). | 1 week | None |
+
 ## Decision Criteria
 
 Items were ranked using these factors:

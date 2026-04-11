@@ -24,11 +24,14 @@ Part of Prototype #3 - QA Automation POC for zSpace Unity AR/VR applications.
 
 import glob
 import json
+import logging
 import os
 import re
 import sys
 
-from qa_common import check, skip, build_scanner_argparser, load_config, resolve_output_dir, save_results, print_summary
+from qa_common import check, skip, build_scanner_argparser, load_config, resolve_output_dir, save_results, print_summary, setup_logging
+
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -393,28 +396,31 @@ def main():
 
     repo_dir = os.path.abspath(args.repo_dir)
     if not os.path.isdir(os.path.join(repo_dir, "Assets")):
-        print(f"ERROR: No Assets/ folder in {repo_dir}")
+        logger.error("No Assets/ folder in %s", repo_dir)
         sys.exit(2)
 
     config = load_config(args.config)
     app_name = config.get("app_name", os.path.basename(repo_dir))
     output_dir = resolve_output_dir(args.output_dir)
 
-    print(f"=== Unity Asset Validator ===")
-    print(f"  App:  {app_name}")
-    print(f"  Repo: {repo_dir}")
-    print()
+    setup_logging(verbose=getattr(args, "verbose", False),
+                  quiet=getattr(args, "quiet", False))
+
+    logger.info("=== Unity Asset Validator ===")
+    logger.info("  App:  %s", app_name)
+    logger.info("  Repo: %s", repo_dir)
+    logger.info("")
 
     results = []
-    print("  [1/5] Checking addressable asset groups...")
+    logger.info("  [1/5] Checking addressable asset groups...")
     results.append(check_addressable_groups(repo_dir))
-    print("  [2/5] Checking prefab integrity...")
+    logger.info("  [2/5] Checking prefab integrity...")
     results.append(check_prefab_integrity(repo_dir))
-    print("  [3/5] Checking material shader references...")
+    logger.info("  [3/5] Checking material shader references...")
     results.append(check_material_shaders(repo_dir))
-    print("  [4/5] Checking for missing .meta files...")
+    logger.info("  [4/5] Checking for missing .meta files...")
     results.append(check_missing_meta_files(repo_dir))
-    print("  [5/5] Checking scenes...")
+    logger.info("  [5/5] Checking scenes...")
     results.append(check_scenes(repo_dir, config))
 
     results_path, _ = save_results(

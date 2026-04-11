@@ -23,12 +23,20 @@ Part of Prototype #3 - QA Automation POC for zSpace Unity AR/VR applications.
 
 import glob
 import json
+import logging
 import os
 import re
 import sys
 from datetime import datetime
 
-from qa_common import check, skip, build_scanner_argparser, load_config, app_slug, resolve_output_dir, save_results, print_summary
+from qa_common import check, skip, build_scanner_argparser, load_config, app_slug, resolve_output_dir, save_results, print_summary, setup_logging
+
+logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Thresholds
+# ---------------------------------------------------------------------------
+MAX_CODE_MARKERS_PASS = 20  # CODE-001: max TODO/HACK/FIXME markers before failing
 
 
 def scan_project_structure(repo_dir, config):
@@ -275,7 +283,7 @@ def scan_code_quality(repo_dir, config):
     results.append(check(
         "CODE-001", f"Code markers (TODO/HACK/FIXME): {critical_markers} found in {len(files_with_markers)} files",
         "Code Quality", "Low",
-        critical_markers < 20,
+        critical_markers < MAX_CODE_MARKERS_PASS,
         f"{critical_markers} markers across {len(files_with_markers)} files. Top files: {files_with_markers[:5]}"
     ))
 
@@ -314,7 +322,7 @@ def scan_code_quality(repo_dir, config):
     ))
 
     if skipped_files > 0:
-        print(f"  Warning: {skipped_files} .cs files could not be read (encoding/permission issues)")
+        logger.warning("  Warning: %d .cs files could not be read (encoding/permission issues)", skipped_files)
 
     return results
 
@@ -380,40 +388,43 @@ def main():
 
     repo_dir = os.path.abspath(args.repo_dir)
     if not os.path.isdir(repo_dir):
-        print(f"ERROR: Repo directory not found: {repo_dir}")
+        logger.error("Repo directory not found: %s", repo_dir)
         sys.exit(1)
 
     config = load_config(args.config)
     app_name = config.get("app_name", "Unknown App")
     output_dir = resolve_output_dir(args.output_dir)
 
-    print(f"=== zSpace Repo Scanner ===")
-    print(f"  App:  {app_name}")
-    print(f"  Repo: {repo_dir}")
-    print()
+    setup_logging(verbose=getattr(args, "verbose", False),
+                  quiet=getattr(args, "quiet", False))
+
+    logger.info("=== zSpace Repo Scanner ===")
+    logger.info("  App:  %s", app_name)
+    logger.info("  Repo: %s", repo_dir)
+    logger.info("")
 
     # Run all scans.
     all_results = []
 
-    print("Scanning project structure...")
+    logger.info("Scanning project structure...")
     all_results.extend(scan_project_structure(repo_dir, config))
 
-    print("Scanning package dependencies...")
+    logger.info("Scanning package dependencies...")
     all_results.extend(scan_packages(repo_dir, config))
 
-    print("Scanning build pipeline...")
+    logger.info("Scanning build pipeline...")
     all_results.extend(scan_build_pipeline(repo_dir, config))
 
-    print("Scanning content and assets...")
+    logger.info("Scanning content and assets...")
     all_results.extend(scan_content(repo_dir, config))
 
-    print("Scanning code quality...")
+    logger.info("Scanning code quality...")
     all_results.extend(scan_code_quality(repo_dir, config))
 
-    print("Scanning licensing readiness...")
+    logger.info("Scanning licensing readiness...")
     all_results.extend(scan_licensing_readiness(repo_dir, config))
 
-    print("Marking hardware-dependent tests...")
+    logger.info("Marking hardware-dependent tests...")
     all_results.extend(scan_hardware_tests(repo_dir, config))
 
     # Write results and print summary.

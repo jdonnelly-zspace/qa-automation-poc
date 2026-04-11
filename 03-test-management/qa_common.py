@@ -15,11 +15,39 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import os
 import re
 import sys
 from datetime import datetime
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Logging setup
+# ---------------------------------------------------------------------------
+
+def setup_logging(verbose=False, quiet=False):
+    """Configure the root logger for the QA pipeline.
+
+    Args:
+        verbose: If True, set level to DEBUG.
+        quiet:   If True, set level to WARNING (suppress info output).
+    """
+    if verbose:
+        level = logging.DEBUG
+    elif quiet:
+        level = logging.WARNING
+    else:
+        level = logging.INFO
+
+    logging.basicConfig(
+        level=level,
+        format="%(message)s",
+        handlers=[logging.StreamHandler(sys.stdout)],
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -64,6 +92,62 @@ def warn(test_id, title, category, priority, notes):
 
 
 # ---------------------------------------------------------------------------
+# ValidationResult — shared by build-verification scripts
+# ---------------------------------------------------------------------------
+
+class ValidationResult:
+    """Collects pass/fail results and prints a summary report.
+
+    Used by validate_build.py and validate_content.py to accumulate check
+    outcomes and produce a human-readable report at the end.
+
+    Args:
+        report_title: The heading shown in the printed report
+                      (e.g., "BUILD VALIDATION REPORT").
+    """
+
+    def __init__(self, report_title="VALIDATION REPORT"):
+        self.report_title = report_title
+        self.checks = []  # list of (name, passed: bool, detail: str)
+
+    def add(self, name, passed, detail=""):
+        """Record the outcome of a single check."""
+        self.checks.append((name, passed, detail))
+
+    @property
+    def all_passed(self):
+        return all(passed for _, passed, _ in self.checks)
+
+    def print_report(self):
+        """Print a human-readable report to stdout."""
+        logger.info("")
+        logger.info("=" * 70)
+        logger.info("  %s", self.report_title)
+        logger.info("=" * 70)
+
+        for name, passed, detail in self.checks:
+            status = "PASS" if passed else "FAIL"
+            icon = "[+]" if passed else "[X]"
+            line = f"  {icon} {status}: {name}"
+            if detail:
+                line += f"  --  {detail}"
+            logger.info(line)
+
+        logger.info("-" * 70)
+        total = len(self.checks)
+        passed_count = sum(1 for _, p, _ in self.checks if p)
+        failed_count = total - passed_count
+        logger.info("  Total: %d  |  Passed: %d  |  Failed: %d", total, passed_count, failed_count)
+
+        if self.all_passed:
+            logger.info("  OVERALL RESULT: PASS")
+        else:
+            logger.info("  OVERALL RESULT: FAIL")
+        logger.info("=" * 70)
+        logger.info("")
+
+
+# ---------------------------------------------------------------------------
 # CLI argument parsing
 # ---------------------------------------------------------------------------
 
@@ -95,6 +179,14 @@ def build_scanner_argparser(description, require_config=True):
         default=None,
         help="Directory for output JSON (default: output/reports/ in project root)",
     )
+    parser.add_argument(
+        "--verbose", action="store_true",
+        help="Enable verbose (DEBUG-level) logging output",
+    )
+    parser.add_argument(
+        "--quiet", action="store_true",
+        help="Suppress informational output (WARNING-level only)",
+    )
     return parser
 
 
@@ -107,7 +199,7 @@ def load_config(config_path):
     if not config_path:
         return {}
     if not os.path.isfile(config_path):
-        print(f"ERROR: Config file not found: {config_path}")
+        logger.error("Config file not found: %s", config_path)
         sys.exit(2)
     with open(config_path, "r", encoding="utf-8") as f:
         return json.load(f)
@@ -133,11 +225,11 @@ def validate_repo_dir(repo_dir_arg):
     """Resolve and validate a repo directory. Exits on error."""
     repo_dir = os.path.abspath(repo_dir_arg)
     if not os.path.isdir(repo_dir):
-        print(f"ERROR: Repo directory not found: {repo_dir}")
+        logger.error("Repo directory not found: %s", repo_dir)
         sys.exit(2)
     assets_dir = os.path.join(repo_dir, "Assets")
     if not os.path.isdir(assets_dir):
-        print(f"ERROR: No Assets/ folder in {repo_dir} -- is this a Unity project?")
+        logger.error("No Assets/ folder in %s -- is this a Unity project?", repo_dir)
         sys.exit(2)
     return repo_dir
 
@@ -192,27 +284,29 @@ def print_summary(results, app_name, results_path, config_path=None):
     skip_count = sum(1 for r in results if r["status"] == "skip")
     total = len(results)
 
-    print()
-    print(f"{'=' * 60}")
-    print(f"  SCAN RESULTS: {app_name}")
-    print(f"{'=' * 60}")
+    logger.info("")
+    logger.info("=" * 60)
+    logger.info("  SCAN RESULTS: %s", app_name)
+    logger.info("=" * 60)
     for r in results:
         icon = {"pass": "[+] PASS", "fail": "[X] FAIL", "skip": "[-] SKIP"}[r["status"]]
         line = f"  {icon}: {r['id']} - {r['title']}"
         if r["status"] != "pass" and r.get("notes"):
             first_line = r["notes"].split("\n")[0]
             line += f"\n         {first_line}"
-        print(line)
-    print(f"{'-' * 60}")
-    print(f"  Total: {total} | Pass: {pass_count} | Fail: {fail_count} | Skip: {skip_count}")
-    print(f"{'=' * 60}")
-    print()
-    print(f"Results saved to: {results_path}")
+        logger.info(line)
+    logger.info("-" * 60)
+    logger.info("  Total: %d | Pass: %d | Fail: %d | Skip: %d",
+                total, pass_count, fail_count, skip_count)
+    logger.info("=" * 60)
+    logger.info("")
+    logger.info("Results saved to: %s", results_path)
 
     if config_path:
-        print()
-        print("To generate an HTML report:")
-        print(f'  python 03-test-management/coverage_report.py '
-              f'--results-file "{results_path}" --config {config_path} --output html')
+        logger.info("")
+        logger.info("To generate an HTML report:")
+        logger.info('  python 03-test-management/coverage_report.py '
+                     '--results-file "%s" --config %s --output html',
+                     results_path, config_path)
 
     return fail_count

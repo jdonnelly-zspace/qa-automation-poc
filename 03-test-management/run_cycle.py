@@ -22,6 +22,7 @@ import argparse
 import base64
 import csv
 import json
+import logging
 import os
 import sys
 import xml.etree.ElementTree as ET
@@ -30,6 +31,8 @@ from pathlib import Path
 from urllib import request as urllib_request
 from urllib.error import HTTPError, URLError
 from xml.dom import minidom
+
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -669,13 +672,13 @@ def load_test_cases(test_cases_dir: str | None) -> dict:
                     category = cases[0].get("category", filename.replace(".json", ""))
                     data[category] = cases
             except (json.JSONDecodeError, KeyError):
-                print(f"  Warning: Could not parse {filepath}, skipping.")
+                logger.warning("  Warning: Could not parse %s, skipping.", filepath)
         if data:
-            print(f"  Loaded {sum(len(v) for v in data.values())} test cases from {test_cases_dir}")
+            logger.info("  Loaded %d test cases from %s", sum(len(v) for v in data.values()), test_cases_dir)
             return data
 
     # Fall back to embedded sample data.
-    print("  Using embedded sample test data (standalone POC mode)")
+    logger.info("  Using embedded sample test data (standalone POC mode)")
     return SAMPLE_TEST_DATA
 
 
@@ -973,9 +976,9 @@ def jira_dry_run(payloads: list[dict], output_dir: str, release: str) -> str:
         Path to the preview JSON file.
     """
     # Print a console preview table.
-    print()
-    print(f"  {'#':<4} {'Test ID':<12} {'Priority':<10} {'Category':<28} Summary")
-    print(f"  {'-'*4} {'-'*12} {'-'*10} {'-'*28} {'-'*40}")
+    logger.info("")
+    logger.info("  %-4s %-12s %-10s %-28s Summary", "#", "Test ID", "Priority", "Category")
+    logger.info("  %s %s %s %s %s", "-"*4, "-"*12, "-"*10, "-"*28, "-"*40)
 
     for i, p in enumerate(payloads, 1):
         meta = p["_meta"]
@@ -983,11 +986,11 @@ def jira_dry_run(payloads: list[dict], output_dir: str, release: str) -> str:
         # Truncate long summaries for the table.
         if len(summary) > 50:
             summary = summary[:47] + "..."
-        print(f"  {i:<4} {meta['test_id']:<12} {meta['priority']:<10} {meta['category']:<28} {summary}")
+        logger.info("  %-4d %-12s %-10s %-28s %s", i, meta['test_id'], meta['priority'], meta['category'], summary)
 
-    print()
-    print(f"  DRY RUN: {len(payloads)} tickets would be created in Jira.")
-    print(f"  No API calls were made.")
+    logger.info("")
+    logger.info("  DRY RUN: %d tickets would be created in Jira.", len(payloads))
+    logger.info("  No API calls were made.")
 
     # Write the full payloads to a JSON file for detailed inspection.
     preview_path = os.path.join(output_dir, f"jira_preview_{release}.json")
@@ -1001,7 +1004,7 @@ def jira_dry_run(payloads: list[dict], output_dir: str, release: str) -> str:
     with open(preview_path, "w", encoding="utf-8") as f:
         json.dump(clean_payloads, f, indent=2)
 
-    print(f"  Full payload preview saved to: {preview_path}")
+    logger.info("  Full payload preview saved to: %s", preview_path)
     return preview_path
 
 
@@ -1032,12 +1035,12 @@ def create_jira_tickets(payloads: list[dict]) -> list[dict]:
             missing.append("JIRA_USER_EMAIL")
         if not token:
             missing.append("JIRA_API_TOKEN")
-        print(f"\n  ERROR: Missing environment variables: {', '.join(missing)}")
-        print(f"  Set these before using --create-jira-tickets without --jira-dry-run.")
-        print(f"  Example:")
-        print(f'    set JIRA_BASE_URL=https://yoursite.atlassian.net')
-        print(f'    set JIRA_USER_EMAIL=you@company.com')
-        print(f'    set JIRA_API_TOKEN=your-api-token')
+        logger.error("\n  ERROR: Missing environment variables: %s", ", ".join(missing))
+        logger.error("  Set these before using --create-jira-tickets without --jira-dry-run.")
+        logger.error("  Example:")
+        logger.error("    set JIRA_BASE_URL=https://yoursite.atlassian.net")
+        logger.error("    set JIRA_USER_EMAIL=you@company.com")
+        logger.error("    set JIRA_API_TOKEN=your-api-token")
         sys.exit(1)
 
     # Build Basic Auth header.
@@ -1064,17 +1067,17 @@ def create_jira_tickets(payloads: list[dict]) -> list[dict]:
                 jira_key = result.get("key", "???")
                 url = f"{base_url}/browse/{jira_key}"
                 created.append({"test_id": meta["test_id"], "jira_key": jira_key, "url": url})
-                print(f"  [{i}/{len(payloads)}] Created {jira_key} - {meta['test_id']}")
+                logger.info("  [%d/%d] Created %s - %s", i, len(payloads), jira_key, meta['test_id'])
         except HTTPError as e:
             error_body = e.read().decode("utf-8") if e.fp else ""
             # Mask any auth details that might appear in error responses
             safe_body = error_body[:200].replace(token, "***").replace(email, "***")
-            print(f"  [{i}/{len(payloads)}] FAILED {meta['test_id']}: HTTP {e.code} - {safe_body}")
+            logger.error("  [%d/%d] FAILED %s: HTTP %d - %s", i, len(payloads), meta['test_id'], e.code, safe_body)
             if e.code in (401, 403):
-                print("  ERROR: Authentication failed. Check JIRA_API_TOKEN and JIRA_USER_EMAIL.")
+                logger.error("  ERROR: Authentication failed. Check JIRA_API_TOKEN and JIRA_USER_EMAIL.")
                 break
         except URLError as e:
-            print(f"  [{i}/{len(payloads)}] FAILED {meta['test_id']}: {e.reason}")
+            logger.error("  [%d/%d] FAILED %s: %s", i, len(payloads), meta['test_id'], e.reason)
 
     return created
 
@@ -1131,7 +1134,15 @@ def main():
         help="Path to a JSON config file (e.g., configs/studio-a3.json). Sets --app-name from the config.",
     )
 
+    parser.add_argument("--verbose", action="store_true", help="Enable verbose logging")
+    parser.add_argument("--quiet", action="store_true", help="Suppress informational output")
+
     args = parser.parse_args()
+
+    level = logging.DEBUG if args.verbose else logging.WARNING if args.quiet else logging.INFO
+    # Matches setup_logging() in qa_common.py
+    logging.basicConfig(level=level, format="%(message)s",
+                        handlers=[logging.StreamHandler(sys.stdout)])
 
     # Load config file if provided, apply app_name from config.
     if args.config:
@@ -1139,7 +1150,7 @@ def main():
             config = json.load(f)
         if args.app_name == "Franklin's Lab A3":  # only override if user didn't explicitly set it
             args.app_name = config.get("app_name", args.app_name)
-        print(f"  Loaded config: {args.config}")
+        logger.info("  Loaded config: %s", args.config)
 
     # Validate Jira arguments.
     if (args.create_jira_tickets or args.jira_dry_run) and not args.jira_project_key:
@@ -1153,57 +1164,57 @@ def main():
 
     os.makedirs(output_dir, exist_ok=True)
 
-    print(f"=== zSpace QA Test Cycle Generator ===")
-    print(f"  Application: {args.app_name}")
-    print(f"  Release:     {args.release_version}")
-    print(f"  Output:      {os.path.abspath(output_dir)}")
-    print()
+    logger.info("=== zSpace QA Test Cycle Generator ===")
+    logger.info("  Application: %s", args.app_name)
+    logger.info("  Release:     %s", args.release_version)
+    logger.info("  Output:      %s", os.path.abspath(output_dir))
+    logger.info("")
 
     # Load test case definitions.
-    print("Loading test cases...")
+    logger.info("Loading test cases...")
     test_data = load_test_cases(args.test_cases_dir)
     total_cases = sum(len(cases) for cases in test_data.values())
     total_categories = len(test_data)
-    print()
+    logger.info("")
 
     # Generate all three output files.
-    print("Generating outputs...")
+    logger.info("Generating outputs...")
 
     csv_path = generate_jira_csv(test_data, args.release_version, args.app_name, output_dir)
-    print(f"  Jira CSV:        {csv_path}")
+    logger.info("  Jira CSV:        %s", csv_path)
 
     md_path = generate_markdown_checklist(test_data, args.release_version, args.app_name, output_dir)
-    print(f"  QA Checklist:    {md_path}")
+    logger.info("  QA Checklist:    %s", md_path)
 
     xml_path = generate_testrail_xml(test_data, args.release_version, args.app_name, output_dir)
-    print(f"  TestRail XML:    {xml_path}")
+    logger.info("  TestRail XML:    %s", xml_path)
 
-    print()
-    print(f"Generated test cycle for {args.app_name} v{args.release_version}: "
-          f"{total_cases} test cases across {total_categories} categories")
+    logger.info("")
+    logger.info("Generated test cycle for %s v%s: %d test cases across %d categories",
+                args.app_name, args.release_version, total_cases, total_categories)
 
     # Jira integration (opt-in).
     if args.create_jira_tickets or args.jira_dry_run:
-        print()
-        print("--- Jira Integration ---")
+        logger.info("")
+        logger.info("--- Jira Integration ---")
         payloads = _build_jira_payloads(
             test_data, args.release_version, args.app_name, args.jira_project_key
         )
-        print(f"  Prepared {len(payloads)} ticket payloads for project {args.jira_project_key}")
+        logger.info("  Prepared %d ticket payloads for project %s", len(payloads), args.jira_project_key)
 
         if args.jira_dry_run:
             jira_dry_run(payloads, output_dir, args.release_version)
         else:
-            print("  Creating tickets in Jira...")
+            logger.info("  Creating tickets in Jira...")
             created = create_jira_tickets(payloads)
-            print()
-            print(f"  Created {len(created)} of {len(payloads)} tickets.")
+            logger.info("")
+            logger.info("  Created %d of %d tickets.", len(created), len(payloads))
             if created:
                 # Save a summary of created tickets.
                 summary_path = os.path.join(output_dir, f"jira_created_{args.release_version}.json")
                 with open(summary_path, "w", encoding="utf-8") as f:
                     json.dump(created, f, indent=2)
-                print(f"  Ticket summary saved to: {summary_path}")
+                logger.info("  Ticket summary saved to: %s", summary_path)
 
 
 if __name__ == "__main__":

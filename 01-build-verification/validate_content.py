@@ -30,8 +30,11 @@ Designed for integration into Jenkins CI/CD pipelines.
 import argparse
 import hashlib
 import json
+import logging
 import os
 import sys
+
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -50,47 +53,10 @@ MIN_FLA3_SIZE_BYTES = 100  # 100 bytes - even the smallest pack is larger
 # Result tracking
 # ---------------------------------------------------------------------------
 
-class ValidationResult:
-    """Collects pass/fail results and prints a summary report."""
-
-    def __init__(self):
-        self.checks = []  # list of (name, passed: bool, detail: str)
-
-    def add(self, name, passed, detail=""):
-        """Record the outcome of a single check."""
-        self.checks.append((name, passed, detail))
-
-    @property
-    def all_passed(self):
-        return all(passed for _, passed, _ in self.checks)
-
-    def print_report(self):
-        """Print a human-readable report to stdout."""
-        print("")
-        print("=" * 70)
-        print("  CONTENT VALIDATION REPORT")
-        print("=" * 70)
-
-        for name, passed, detail in self.checks:
-            status = "PASS" if passed else "FAIL"
-            icon = "[+]" if passed else "[X]"
-            line = f"  {icon} {status}: {name}"
-            if detail:
-                line += f"  --  {detail}"
-            print(line)
-
-        print("-" * 70)
-        total = len(self.checks)
-        passed_count = sum(1 for _, p, _ in self.checks if p)
-        failed_count = total - passed_count
-        print(f"  Total: {total}  |  Passed: {passed_count}  |  Failed: {failed_count}")
-
-        if self.all_passed:
-            print("  OVERALL RESULT: PASS")
-        else:
-            print("  OVERALL RESULT: FAIL")
-        print("=" * 70)
-        print("")
+# ValidationResult is imported from qa_common to avoid duplication.
+# Add the test-management directory to sys.path so we can import it.
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "03-test-management"))
+from qa_common import ValidationResult  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -165,13 +131,13 @@ def validate_content(content_dir, expected_count, manifest_path, result):
 
     # Print the list of found files for diagnostic purposes.
     if fla3_files:
-        print(f"\nFound {found_count} .fla3 file(s):")
+        logger.info("\nFound %d .fla3 file(s):", found_count)
         for filepath in fla3_files:
             size = os.path.getsize(filepath)
-            print(f"  {os.path.basename(filepath)}  ({size:,} bytes)")
-        print("")
+            logger.info("  %s  (%s bytes)", os.path.basename(filepath), f"{size:,}")
+        logger.info("")
     else:
-        print(f"\nNo .fla3 files found under: {content_dir}\n")
+        logger.info("\nNo .fla3 files found under: %s\n", content_dir)
 
     # --- Check 1: Expected file count ---
     count_ok = found_count >= expected_count
@@ -218,7 +184,7 @@ def validate_content(content_dir, expected_count, manifest_path, result):
     if manifest_path:
         verify_manifest(fla3_files, manifest_path, result)
     else:
-        print("  (Skipping hash verification - no --manifest provided)\n")
+        logger.info("  (Skipping hash verification - no --manifest provided)\n")
 
 
 def verify_manifest(fla3_files, manifest_path, result):
@@ -302,7 +268,7 @@ def generate_manifest(content_dir, output_path):
     """
     fla3_files = find_fla3_files(content_dir)
     if not fla3_files:
-        print(f"No .fla3 files found in {content_dir} - cannot generate manifest.")
+        logger.error("No .fla3 files found in %s - cannot generate manifest.", content_dir)
         sys.exit(1)
 
     manifest = {}
@@ -310,12 +276,12 @@ def generate_manifest(content_dir, output_path):
         name = os.path.basename(filepath)
         file_hash = compute_sha256(filepath)
         manifest[name] = file_hash
-        print(f"  {name}: {file_hash}")
+        logger.info("  %s: %s", name, file_hash)
 
     with open(output_path, "w", encoding="utf-8") as f:
         json.dump(manifest, f, indent=2, sort_keys=True)
 
-    print(f"\nManifest written to: {output_path} ({len(manifest)} entries)")
+    logger.info("\nManifest written to: %s (%d entries)", output_path, len(manifest))
 
 
 # ---------------------------------------------------------------------------
@@ -362,26 +328,34 @@ def main():
         ),
     )
 
+    parser.add_argument("--verbose", action="store_true", help="Enable verbose logging")
+    parser.add_argument("--quiet", action="store_true", help="Suppress informational output")
+
     args = parser.parse_args()
+
+    # Matches setup_logging() in qa_common.py
+    level = logging.DEBUG if args.verbose else logging.WARNING if args.quiet else logging.INFO
+    logging.basicConfig(level=level, format="%(message)s",
+                        handlers=[logging.StreamHandler(sys.stdout)])
 
     # Normalize the path.
     content_dir = os.path.abspath(args.content_dir)
 
     if not os.path.isdir(content_dir):
-        print(f"ERROR: Content directory does not exist: {content_dir}")
+        logger.error("ERROR: Content directory does not exist: %s", content_dir)
         sys.exit(1)
 
     # If the user asked to generate a manifest, do that and exit.
     if args.generate_manifest:
-        print(f"Generating manifest from: {content_dir}")
+        logger.info("Generating manifest from: %s", content_dir)
         generate_manifest(content_dir, args.generate_manifest)
         sys.exit(0)
 
     # Otherwise, run validation.
-    print(f"Validating activity pack content in: {content_dir}")
-    print(f"Expected count: {args.expected_count}")
+    logger.info("Validating activity pack content in: %s", content_dir)
+    logger.info("Expected count: %d", args.expected_count)
 
-    result = ValidationResult()
+    result = ValidationResult("CONTENT VALIDATION REPORT")
     validate_content(content_dir, args.expected_count, args.manifest, result)
     result.print_report()
 

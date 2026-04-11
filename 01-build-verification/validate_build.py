@@ -27,9 +27,12 @@ Designed for integration into Jenkins CI/CD pipelines.
 import argparse
 import glob
 import json
+import logging
 import os
 import subprocess
 import sys
+
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -76,47 +79,10 @@ LOG_ERROR_KEYWORDS = [
 # Result tracking
 # ---------------------------------------------------------------------------
 
-class ValidationResult:
-    """Collects pass/fail results and prints a summary report."""
-
-    def __init__(self):
-        self.checks = []  # list of (name, passed: bool, detail: str)
-
-    def add(self, name, passed, detail=""):
-        """Record the outcome of a single check."""
-        self.checks.append((name, passed, detail))
-
-    @property
-    def all_passed(self):
-        return all(passed for _, passed, _ in self.checks)
-
-    def print_report(self):
-        """Print a human-readable report to stdout."""
-        print("")
-        print("=" * 70)
-        print("  BUILD VALIDATION REPORT")
-        print("=" * 70)
-
-        for name, passed, detail in self.checks:
-            status = "PASS" if passed else "FAIL"
-            icon = "[+]" if passed else "[X]"
-            line = f"  {icon} {status}: {name}"
-            if detail:
-                line += f"  --  {detail}"
-            print(line)
-
-        print("-" * 70)
-        total = len(self.checks)
-        passed_count = sum(1 for _, p, _ in self.checks if p)
-        failed_count = total - passed_count
-        print(f"  Total: {total}  |  Passed: {passed_count}  |  Failed: {failed_count}")
-
-        if self.all_passed:
-            print("  OVERALL RESULT: PASS")
-        else:
-            print("  OVERALL RESULT: FAIL")
-        print("=" * 70)
-        print("")
+# ValidationResult is imported from qa_common to avoid duplication.
+# Add the test-management directory to sys.path so we can import it.
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "03-test-management"))
+from qa_common import ValidationResult  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -421,7 +387,15 @@ def main():
              "Overrides --app-name and other defaults with app-specific values.",
     )
 
+    parser.add_argument("--verbose", action="store_true", help="Enable verbose logging")
+    parser.add_argument("--quiet", action="store_true", help="Suppress informational output")
+
     args = parser.parse_args()
+
+    # Matches setup_logging() in qa_common.py
+    level = logging.DEBUG if args.verbose else logging.WARNING if args.quiet else logging.INFO
+    logging.basicConfig(level=level, format="%(message)s",
+                        handlers=[logging.StreamHandler(sys.stdout)])
 
     # Load config file if provided, then apply CLI overrides.
     global APP_NAME
@@ -429,7 +403,7 @@ def main():
         with open(args.config, "r", encoding="utf-8") as f:
             config = json.load(f)
         APP_NAME = config.get("exe_name", APP_NAME)
-        print(f"  Loaded config: {args.config} (app: {config.get('app_name', APP_NAME)})")
+        logger.info("  Loaded config: %s (app: %s)", args.config, config.get("app_name", APP_NAME))
     if args.app_name:
         APP_NAME = args.app_name
 
@@ -438,12 +412,12 @@ def main():
 
     # Make sure the build directory actually exists before we start checking.
     if not os.path.isdir(build_dir):
-        print(f"ERROR: Build directory does not exist: {build_dir}")
+        logger.error("ERROR: Build directory does not exist: %s", build_dir)
         sys.exit(1)
 
-    print(f"Validating {args.build_type.upper()} build in: {build_dir}")
+    logger.info("Validating %s build in: %s", args.build_type.upper(), build_dir)
 
-    result = ValidationResult()
+    result = ValidationResult("BUILD VALIDATION REPORT")
 
     if args.build_type == "win64":
         validate_win64(build_dir, result)

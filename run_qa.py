@@ -18,12 +18,15 @@ Part of QA Automation POC for zSpace Unity AR/VR applications.
 import argparse
 import glob
 import json
+import logging
 import os
 import re
 import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -51,9 +54,9 @@ def run_script(script_name, args_list, label):
         2+ = script error (pipeline logs warning and continues)
     """
     cmd = [sys.executable, str(SCRIPTS_DIR / script_name)] + args_list
-    print(f"\n{'=' * 64}")
-    print(f"  RUNNING: {label}")
-    print(f"{'=' * 64}\n")
+    logger.info("\n%s", "=" * 64)
+    logger.info("  RUNNING: %s", label)
+    logger.info("%s\n", "=" * 64)
 
     try:
         result = subprocess.run(
@@ -66,19 +69,18 @@ def run_script(script_name, args_list, label):
             timeout=300,  # 5 minute timeout per scanner
         )
     except subprocess.TimeoutExpired:
-        print(f"  ERROR: {label} timed out after 5 minutes")
+        logger.error("  ERROR: %s timed out after 5 minutes", label)
         return False, None
 
     # Print output (safe for Windows cp1252 console)
     if result.stdout:
-        print(result.stdout.encode("ascii", errors="replace").decode("ascii"))
+        logger.info(result.stdout.encode("ascii", errors="replace").decode("ascii"))
     if result.stderr:
-        print(result.stderr.encode("ascii", errors="replace").decode("ascii"),
-              file=sys.stderr)
+        logger.error(result.stderr.encode("ascii", errors="replace").decode("ascii"))
 
     # Check exit code
     if result.returncode not in (0, 1):
-        print(f"  WARNING: {label} exited with code {result.returncode} (possible error)")
+        logger.warning("  WARNING: %s exited with code %d (possible error)", label, result.returncode)
 
     # Extract the results file path from output (scripts print it)
     output_path = None
@@ -111,7 +113,7 @@ def resolve_repo(repo_arg):
 
         clone_target = CLONE_DIR / repo_name
         if clone_target.exists() and (clone_target / "Assets").exists():
-            print(f"  Using existing clone: {clone_target}")
+            logger.info("  Using existing clone: %s", clone_target)
             # Pull latest
             subprocess.run(
                 ["git", "pull", "--ff-only"],
@@ -120,7 +122,7 @@ def resolve_repo(repo_arg):
                 timeout=120,
             )
         else:
-            print(f"  Cloning {repo_arg} -> {clone_target}")
+            logger.info("  Cloning %s -> %s", repo_arg, clone_target)
             CLONE_DIR.mkdir(parents=True, exist_ok=True)
             try:
                 result = subprocess.run(
@@ -130,10 +132,10 @@ def resolve_repo(repo_arg):
                     timeout=300,
                 )
             except subprocess.TimeoutExpired:
-                print(f"  ERROR: Clone timed out after 5 minutes")
+                logger.error("  ERROR: Clone timed out after 5 minutes")
                 return None, repo_name
             if result.returncode != 0:
-                print(f"  ERROR: Clone failed: {result.stderr}")
+                logger.error("  ERROR: Clone failed: %s", result.stderr)
                 return None, repo_name
 
             # Init submodules
@@ -152,7 +154,7 @@ def resolve_repo(repo_arg):
         # Try relative to project root parent (where repos typically live)
         repo_path = PROJECT_ROOT.parent / repo_arg
     if not repo_path.exists():
-        print(f"  ERROR: Path not found: {repo_arg}")
+        logger.error("  ERROR: Path not found: %s", repo_arg)
         return None, Path(repo_arg).name
 
     repo_name = repo_path.name
@@ -172,7 +174,7 @@ def find_config(repo_name, explicit_config=None):
             cfg = PROJECT_ROOT / cfg
         if cfg.exists():
             return str(cfg)
-        print(f"  Warning: Config not found: {explicit_config}")
+        logger.warning("  Warning: Config not found: %s", explicit_config)
 
     # Auto-detect by scanning configs/ directory
     repo_key = repo_name.lower().replace("-", "").replace("_", "").replace(".", "")
@@ -184,12 +186,12 @@ def find_config(repo_name, explicit_config=None):
             app_key = app_name.lower().replace("-", "").replace("_", "").replace(".", "").replace("'", "").replace(" ", "")
             # Match if repo name contains the app key or vice versa
             if app_key in repo_key or repo_key in app_key:
-                print(f"  Auto-detected config: {cfg_file}")
+                logger.info("  Auto-detected config: %s", cfg_file)
                 return str(cfg_file)
         except (json.JSONDecodeError, IOError):
             continue
 
-    print(f"  Warning: No config found for '{repo_name}'. Scanners will use defaults.")
+    logger.warning("  Warning: No config found for '%s'. Scanners will use defaults.", repo_name)
     return None
 
 
@@ -238,11 +240,11 @@ def run_pipeline(repo_dir, repo_name, config_path):
 
     app_slug = re.sub(r"[^a-z0-9]+", "-", app_name.lower()).strip("-")
 
-    print(f"\n{'#' * 64}")
-    print(f"  QA AUTOMATION: {app_name}")
-    print(f"  Repo: {repo_dir}")
-    print(f"  Config: {config_path or '(none)'}")
-    print(f"{'#' * 64}")
+    logger.info("\n%s", "#" * 64)
+    logger.info("  QA AUTOMATION: %s", app_name)
+    logger.info("  Repo: %s", repo_dir)
+    logger.info("  Config: %s", config_path or "(none)")
+    logger.info("#" * 64)
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     result_files = []
@@ -277,23 +279,23 @@ def run_pipeline(repo_dir, repo_name, config_path):
 
     # -- 5. Merge all results --------------------------------------------------
     if not result_files:
-        print("\n  ERROR: No scan results were produced.")
+        logger.error("\n  ERROR: No scan results were produced.")
         return None
 
-    print(f"\n{'=' * 64}")
-    print(f"  MERGING {len(result_files)} scan results")
-    print(f"{'=' * 64}")
+    logger.info("\n%s", "=" * 64)
+    logger.info("  MERGING %d scan results", len(result_files))
+    logger.info("=" * 64)
 
     merged_path = merge_json_results(result_files, app_name)
     if not merged_path:
-        print("  ERROR: Failed to merge results.")
+        logger.error("  ERROR: Failed to merge results.")
         return None
-    print(f"  Merged: {merged_path}")
+    logger.info("  Merged: %s", merged_path)
 
     # -- 6. Check for Unity test results XML -----------------------------------
     unity_xml = OUTPUT_DIR / f"unity_test_results_{app_slug}.xml"
     if unity_xml.exists():
-        print(f"\n  Found Unity test results: {unity_xml}")
+        logger.info("\n  Found Unity test results: %s", unity_xml)
         unity_args = [
             "--xml-file", str(unity_xml),
             "--app-name", app_name,
@@ -308,7 +310,7 @@ def run_pipeline(repo_dir, repo_name, config_path):
         if ok and path:
             merged_path = path  # Use the combined file
     else:
-        print(f"\n  No Unity test results found at {unity_xml} (skipping)")
+        logger.info("\n  No Unity test results found at %s (skipping)", unity_xml)
 
     # -- 7. Generate HTML report -----------------------------------------------
     report_args = [
@@ -358,27 +360,40 @@ def main():
         default=None,
         help="Explicit config file (auto-detected if omitted)",
     )
+    parser.add_argument(
+        "--verbose", action="store_true",
+        help="Enable verbose (DEBUG-level) logging",
+    )
+    parser.add_argument(
+        "--quiet", action="store_true",
+        help="Suppress informational output (WARNING-level only)",
+    )
 
     args = parser.parse_args()
 
-    print(f"{'#' * 64}")
-    print(f"  zSpace QA Automation POC")
-    print(f"  Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    print(f"  Repos: {len(args.repos)}")
-    print(f"{'#' * 64}")
+    # Matches setup_logging() in qa_common.py
+    level = logging.DEBUG if args.verbose else logging.WARNING if args.quiet else logging.INFO
+    logging.basicConfig(level=level, format="%(message)s",
+                        handlers=[logging.StreamHandler(sys.stdout)])
+
+    logger.info("#" * 64)
+    logger.info("  zSpace QA Automation POC")
+    logger.info("  Date: %s", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+    logger.info("  Repos: %d", len(args.repos))
+    logger.info("#" * 64)
 
     reports = []
 
     for repo_arg in args.repos:
-        print(f"\n  Resolving: {repo_arg}")
+        logger.info("\n  Resolving: %s", repo_arg)
         repo_dir, repo_name = resolve_repo(repo_arg)
         if not repo_dir:
-            print(f"  SKIPPED: Could not resolve {repo_arg}")
+            logger.warning("  SKIPPED: Could not resolve %s", repo_arg)
             continue
 
         # Verify it's a Unity project
         if not os.path.isdir(os.path.join(repo_dir, "Assets")):
-            print(f"  SKIPPED: No Assets/ folder in {repo_dir} — not a Unity project")
+            logger.warning("  SKIPPED: No Assets/ folder in %s — not a Unity project", repo_dir)
             continue
 
         config_path = find_config(repo_name, args.config if len(args.repos) == 1 else None)
@@ -387,19 +402,19 @@ def main():
             reports.append((repo_name, report))
 
     # -- Summary ---------------------------------------------------------------
-    print(f"\n{'#' * 64}")
-    print(f"  QA AUTOMATION COMPLETE")
-    print(f"{'#' * 64}")
+    logger.info("\n%s", "#" * 64)
+    logger.info("  QA AUTOMATION COMPLETE")
+    logger.info("#" * 64)
 
     if reports:
-        print(f"\n  Reports generated:")
+        logger.info("\n  Reports generated:")
         for name, path in reports:
-            print(f"    {name}: {path}")
+            logger.info("    %s: %s", name, path)
     else:
-        print("\n  No reports were generated.")
+        logger.info("\n  No reports were generated.")
 
-    print(f"\n  All output: {OUTPUT_DIR}")
-    print()
+    logger.info("\n  All output: %s", OUTPUT_DIR)
+    logger.info("")
 
     return 0 if reports else 1
 

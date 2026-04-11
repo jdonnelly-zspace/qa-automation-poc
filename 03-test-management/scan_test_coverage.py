@@ -22,13 +22,16 @@ Part of Prototype #3 - QA Automation POC for zSpace Unity AR/VR applications.
 import argparse
 import glob
 import json
+import logging
 import os
 import re
 import sys
 from collections import defaultdict
 from datetime import datetime
 
-from qa_common import check, load_config, resolve_output_dir, app_slug as make_app_slug
+from qa_common import check, load_config, resolve_output_dir, app_slug as make_app_slug, setup_logging
+
+logger = logging.getLogger(__name__)
 
 
 # Directories that contain test code (case-insensitive match).
@@ -42,7 +45,11 @@ _TEST_SUFFIXES = ("Tests.cs", "Test.cs")
 _TEST_PREFIXES = ("Test",)
 
 # Keywords that mark a script as high-priority for testing.
-_HIGH_PRIORITY_KEYWORDS = {"Controller", "Manager", "Importer", "Service"}
+_HIGH_PRIORITY_KEYWORDS = {"Controller", "Manager", "Importer", "Service", "Validator", "Cache", "Loader"}
+
+# Pass/fail thresholds (configurable here; could move to config JSON later).
+DEFAULT_COVERAGE_THRESHOLD = 50.0       # Overall coverage % to pass COV-001
+DEFAULT_HP_COVERAGE_THRESHOLD = 75.0    # High-priority coverage % to pass COV-002
 
 
 def _is_excluded_dir(rel_path):
@@ -219,22 +226,22 @@ def build_results(production, tests, covered, uncovered, modules,
     else:
         pct = (total_covered / total_prod) * 100.0
 
-    # A passing threshold is configurable, but 50% is a reasonable baseline.
-    cov_pass = pct >= 50.0
+    cov_pass = pct >= DEFAULT_COVERAGE_THRESHOLD
 
     if total_covered > 0 and extra_test_count > 0:
         cov_note = (
             f"{pct:.1f}% of production scripts have a corresponding test file "
             f"({total_covered} covered, {len(uncovered)} untested). "
-            f"{total_covered} scripts have validated POC tests "
-            f"(from extra-tests directories)."
+            f"{total_covered} POC test templates provided "
+            f"(from extra-tests directories). These are stub-based templates "
+            f"ready for Unity integration — not yet executed in Unity runtime."
         )
         cov_remediation = (
-            f"{total_covered} scripts already have validated POC tests "
-            f"(all passing in Unity). To continue improving coverage: "
-            f"Target 75% on Controllers/Managers within 2-3 sprints, "
-            f"then work down remaining {len(uncovered)} scripts by module priority. "
-            f"POC test files are in 02-unity-unit-tests/EditModeTests/."
+            f"{total_covered} POC test templates exist in "
+            f"02-unity-unit-tests/EditModeTests/. To activate real coverage: "
+            f"copy into Assets/Tests/, replace stubs with real classes, "
+            f"run in Unity Test Runner. Then target {DEFAULT_HP_COVERAGE_THRESHOLD:.0f}% "
+            f"on Controllers/Managers within 2-3 sprints."
         )
     else:
         cov_note = (
@@ -248,8 +255,8 @@ def build_results(production, tests, covered, uncovered, modules,
             "loading breaks. 3) UndoRedoManager - data loss if undo breaks. "
             "4) SceneManager - core scene loading. 5) ActivityImporter - activity "
             "pipeline. POC test files for these are in 02-unity-unit-tests/EditModeTests/. "
-            "Target 75% coverage on Controllers/Managers within 2-3 sprints, then "
-            "work down remaining scripts by module priority."
+            f"Target {DEFAULT_HP_COVERAGE_THRESHOLD:.0f}% coverage on Controllers/Managers "
+            "within 2-3 sprints, then work down remaining scripts by module priority."
         )
 
     results.append({
@@ -280,7 +287,7 @@ def build_results(production, tests, covered, uncovered, modules,
         ))
     else:
         hp_pct = (len(hp_covered) / len(hp_scripts)) * 100.0
-        hp_pass = hp_pct >= 75.0
+        hp_pass = hp_pct >= DEFAULT_HP_COVERAGE_THRESHOLD
         uncov_list = "\n".join(
             f"  {fname}  ({rel})" for rel, fname in hp_uncovered[:15]
         )
@@ -288,19 +295,13 @@ def build_results(production, tests, covered, uncovered, modules,
             uncov_list += f"\n  ... and {len(hp_uncovered) - 15} more"
 
         if len(hp_covered) > 0 and extra_test_count > 0:
-            covered_names = ", ".join(
-                os.path.basename(rel).replace(".cs", "")
-                for rel, _ in hp_scripts if rel in covered_set
-            )
             hp_remediation = (
                 f"{len(hp_covered)} of {len(hp_scripts)} high-priority scripts "
-                f"already have validated POC tests (all passing in Unity): "
-                f"{covered_names}. "
-                f"Remaining {len(hp_uncovered)} scripts need coverage. "
-                f"Next priorities by user impact: focus on scripts in "
-                f"licensing, content loading, and scene management modules. "
-                f"POC test files are in 02-unity-unit-tests/EditModeTests/ - "
-                f"copy into Assets/Tests/ and adapt assembly references."
+                f"have POC test templates (stub-based, not yet executed in Unity). "
+                f"To activate: copy from 02-unity-unit-tests/EditModeTests/ into "
+                f"Assets/Tests/, replace stubs with real classes, run in Unity "
+                f"Test Runner. "
+                f"Remaining {len(hp_uncovered)} scripts still need templates."
             )
         else:
             hp_remediation = (
@@ -319,7 +320,8 @@ def build_results(production, tests, covered, uncovered, modules,
             "id": "COV-002",
             "title": (
                 f"High-priority scripts: {hp_pct:.1f}% covered "
-                f"({len(hp_covered)}/{len(hp_scripts)})"
+                f"({len(hp_covered)}/{len(hp_scripts)}) "
+                f"(test templates exist)"
             ),
             "category": "Test Coverage",
             "priority": "Critical",
@@ -374,7 +376,7 @@ def build_results(production, tests, covered, uncovered, modules,
 def print_module_table(modules):
     """Print a table of modules with coverage percentages."""
     if not modules:
-        print("  (no modules found)")
+        logger.info("  (no modules found)")
         return
 
     # Sort by coverage ascending so worst modules appear first.
@@ -390,18 +392,18 @@ def print_module_table(modules):
     name_w = max(name_w, 6)  # "Module" header
 
     header = f"  {'Module':<{name_w}}  {'Total':>5}  {'Tested':>6}  {'Coverage':>8}"
-    print(header)
-    print(f"  {'-' * name_w}  -----  ------  --------")
+    logger.info(header)
+    logger.info("  %s  -----  ------  --------", "-" * name_w)
 
     for mod_name, info in sorted_mods:
         total = info["total"]
         covered = info["covered"]
         pct = (covered / total * 100.0) if total > 0 else 0.0
         bar = "*" if pct == 0 and total > 0 else ""
-        print(f"  {mod_name:<{name_w}}  {total:>5}  {covered:>6}  {pct:>7.1f}% {bar}")
+        logger.info(f"  {mod_name:<{name_w}}  {total:>5}  {covered:>6}  {pct:>7.1f}% {bar}")
 
-    print()
-    print("  * = zero coverage")
+    logger.info("")
+    logger.info("  * = zero coverage")
 
 
 # ---------------------------------------------------------------------------
@@ -449,17 +451,22 @@ def main():
         ),
     )
 
+    parser.add_argument("--verbose", action="store_true", help="Enable verbose logging")
+    parser.add_argument("--quiet", action="store_true", help="Suppress informational output")
+
     args = parser.parse_args()
+
+    setup_logging(verbose=args.verbose, quiet=args.quiet)
 
     # Resolve and validate repo directory.
     repo_dir = os.path.abspath(args.repo_dir)
     if not os.path.isdir(repo_dir):
-        print(f"ERROR: Repo directory not found: {repo_dir}")
+        logger.error("Repo directory not found: %s", repo_dir)
         sys.exit(2)
 
     assets_dir = os.path.join(repo_dir, "Assets")
     if not os.path.isdir(assets_dir):
-        print(f"ERROR: No Assets/ folder in {repo_dir} -- is this a Unity project?")
+        logger.error("No Assets/ folder in %s -- is this a Unity project?", repo_dir)
         sys.exit(2)
 
     config = load_config(args.config)
@@ -468,12 +475,12 @@ def main():
     output_dir = resolve_output_dir(args.output_dir)
 
     # -- Discovery -------------------------------------------------------------
-    print(f"=== Test Coverage Scanner ===")
-    print(f"  App:  {app_name}")
-    print(f"  Repo: {repo_dir}")
-    print()
+    logger.info("=== Test Coverage Scanner ===")
+    logger.info("  App:  %s", app_name)
+    logger.info("  Repo: %s", repo_dir)
+    logger.info("")
 
-    print("  Discovering scripts...")
+    logger.info("  Discovering scripts...")
     production, tests = discover_scripts(repo_dir)
 
     # -- Extra test directories (e.g., POC test files outside the repo) --------
@@ -481,7 +488,7 @@ def main():
     for extra_dir in args.extra_tests:
         extra_abs = os.path.abspath(extra_dir)
         if not os.path.isdir(extra_abs):
-            print(f"    Warning: extra-tests dir not found: {extra_abs}")
+            logger.warning("    Warning: extra-tests dir not found: %s", extra_abs)
             continue
         for cs_path in glob.glob(os.path.join(extra_abs, "**", "*.cs"), recursive=True):
             fname = os.path.basename(cs_path)
@@ -490,18 +497,18 @@ def main():
                 tests.append((rel, fname))
                 extra_test_count += 1
 
-    print(f"    Production scripts: {len(production)}")
-    print(f"    Test scripts:       {len(tests)}"
-          + (f" ({extra_test_count} from extra-tests)" if extra_test_count else ""))
-    print()
+    logger.info("    Production scripts: %d", len(production))
+    logger.info("    Test scripts:       %d%s", len(tests),
+                f" ({extra_test_count} from extra-tests)" if extra_test_count else "")
+    logger.info("")
 
     # -- Matching --------------------------------------------------------------
-    print("  Matching production scripts to tests...")
+    logger.info("  Matching production scripts to tests...")
     covered, uncovered = match_coverage(production, tests)
     covered_set = {rel for rel, _ in covered}
-    print(f"    Covered:   {len(covered)}")
-    print(f"    Uncovered: {len(uncovered)}")
-    print()
+    logger.info("    Covered:   %d", len(covered))
+    logger.info("    Uncovered: %d", len(uncovered))
+    logger.info("")
 
     # -- Grouping --------------------------------------------------------------
     modules = group_by_module(production, covered_set)
@@ -555,10 +562,10 @@ def main():
         json.dump(data, fh, indent=2)
 
     # -- Console output --------------------------------------------------------
-    print(f"{'=' * 64}")
-    print(f"  MODULE COVERAGE: {app_name}")
-    print(f"{'=' * 64}")
-    print()
+    logger.info("=" * 64)
+    logger.info("  MODULE COVERAGE: %s", app_name)
+    logger.info("=" * 64)
+    logger.info("")
     print_module_table(modules)
 
     # High-priority untested scripts.
@@ -568,16 +575,16 @@ def main():
         if _is_high_priority(os.path.basename(rel))
     ]
     if hp_untested:
-        print(f"  HIGH-PRIORITY UNTESTED SCRIPTS ({len(hp_untested)}):")
-        print(f"  {'-' * 50}")
+        logger.info("  HIGH-PRIORITY UNTESTED SCRIPTS (%d):", len(hp_untested))
+        logger.info("  %s", "-" * 50)
         for rel, fname in hp_untested:
-            print(f"    {fname:<40s}  {rel}")
-        print()
+            logger.info("    %-40s  %s", fname, rel)
+        logger.info("")
 
     # Test result summary.
-    print(f"{'=' * 64}")
-    print(f"  TEST RESULTS")
-    print(f"{'=' * 64}")
+    logger.info("=" * 64)
+    logger.info("  TEST RESULTS")
+    logger.info("=" * 64)
     for r in results:
         icon = {"pass": "[+] PASS", "fail": "[X] FAIL", "skip": "[-] SKIP"}[
             r["status"]
@@ -586,27 +593,23 @@ def main():
         if r["status"] != "pass" and r.get("notes"):
             first_line = r["notes"].split("\n")[0]
             line += f"\n         {first_line}"
-        print(line)
+        logger.info(line)
 
     pass_count = sum(1 for r in results if r["status"] == "pass")
     fail_count = sum(1 for r in results if r["status"] == "fail")
     skip_count = sum(1 for r in results if r["status"] == "skip")
 
-    print(f"{'-' * 64}")
-    print(
-        f"  Total: {len(results)} | Pass: {pass_count} | "
-        f"Fail: {fail_count} | Skip: {skip_count}"
-    )
-    print(f"{'=' * 64}")
-    print()
-    print(f"Results saved to: {results_path}")
-    print()
-    print("To generate an HTML report:")
-    cfg_flag = f' --config {args.config}' if args.config else ""
-    print(
-        f'  python 03-test-management/coverage_report.py '
-        f'--results-file "{results_path}"{cfg_flag} --output html'
-    )
+    logger.info("-" * 64)
+    logger.info("  Total: %d | Pass: %d | Fail: %d | Skip: %d",
+                len(results), pass_count, fail_count, skip_count)
+    logger.info("=" * 64)
+    logger.info("")
+    logger.info("Results saved to: %s", results_path)
+    logger.info("")
+    logger.info("To generate an HTML report:")
+    cfg_flag = f" --config {args.config}" if args.config else ""
+    logger.info('  python 03-test-management/coverage_report.py '
+                '--results-file "%s"%s --output html', results_path, cfg_flag)
 
     sys.exit(1 if fail_count > 0 else 0)
 
